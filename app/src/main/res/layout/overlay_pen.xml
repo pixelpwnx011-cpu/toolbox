@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/penRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.geneo.smartboard.overlay.PenCanvasView
+        android:id="@+id/penCanvas"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent" />
+
+    <LinearLayout
+        android:id="@+id/penToolbar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_tool_card"
+        android:elevation="18dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/penDragHandle"
+            android:layout_width="26dp"
+            android:layout_height="34dp"
+            android:layout_marginEnd="4dp"
+            android:padding="4dp"
+            android:src="@drawable/ic_drag_handle" />
+
+        <!-- Pen type presets -->
+        <ImageButton
+            android:id="@+id/btnTypePen"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginEnd="3dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Pen"
+            android:padding="8dp"
+            android:src="@drawable/ic_pen" />
+
+        <ImageButton
+            android:id="@+id/btnTypeHighlighter"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Highlighter"
+            android:padding="7dp"
+            android:src="@drawable/ic_highlighter" />
+
+        <!-- Color swatches -->
+        <View
+            android:id="@+id/swatchRed"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/shape_circle_white"
+            android:backgroundTint="#FF3B30" />
+
+        <View
+            android:id="@+id/swatchYellow"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/shape_circle_white"
+            android:backgroundTint="#FFD60A" />
+
+        <View
+            android:id="@+id/swatchGreen"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/shape_circle_white"
+            android:backgroundTint="#34C759" />
+
+        <View
+            android:id="@+id/swatchBlue"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/shape_circle_white"
+            android:backgroundTint="#0A84FF" />
+
+        <View
+            android:id="@+id/swatchWhite"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/shape_circle_white"
+            android:backgroundTint="#FFFFFF" />
+
+        <!-- Size -->
+        <ImageButton
+            android:id="@+id/btnSizeMinus"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Smaller"
+            android:padding="7dp"
+            android:src="@drawable/ic_minus" />
+
+        <TextView
+            android:id="@+id/tvPenSize"
+            android:layout_width="28dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:gravity="center"
+            android:text="5"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnSizePlus"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Bigger"
+            android:padding="6dp"
+            android:src="@drawable/ic_plus" />
+
+        <!-- Eraser -->
+        <ImageButton
+            android:id="@+id/btnEraser"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Eraser"
+            android:padding="8dp"
+            android:src="@drawable/ic_eraser" />
+
+        <!-- Clear all -->
+        <ImageButton
+            android:id="@+id/btnClearPen"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_calc_clear"
+            android:contentDescription="Clear all"
+            android:padding="8dp"
+            android:src="@drawable/ic_reset" />
+
+        <!-- Close -->
+        <ImageButton
+            android:id="@+id/btnClosePen"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_round_button"
+            android:contentDescription="Close"
+            android:padding="8dp"
+            android:src="@drawable/ic_close" />
+
+    </LinearLayout>
+
+</FrameLayout>

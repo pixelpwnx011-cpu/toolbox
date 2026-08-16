@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Outer root is a FrameLayout so the resize-handle grip can float in the
+  bottom-right corner on top of the card. Actual window size comes from the
+  WindowManager.LayoutParams set in code (OverlayService), not the
+  width/height below (those are placeholders used only during preview).
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/stopwatchOuterRoot"
+    android:layout_width="270dp"
+    android:layout_height="380dp">
+
+    <LinearLayout
+        android:id="@+id/stopwatchRoot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_tool_card"
+        android:elevation="14dp"
+        android:orientation="vertical">
+
+        <!-- Header / drag bar -->
+        <LinearLayout
+            android:id="@+id/stopwatchHeader"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_tool_header"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_stopwatch" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Stopwatch"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnCloseStopwatch"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Close"
+                android:padding="7dp"
+                android:src="@drawable/ic_close" />
+        </LinearLayout>
+
+        <!-- Everything below the header shares the remaining height. Time
+             display + controls keep their natural size; the laps list is the
+             flexible part that grows/shrinks with the window. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvStopwatchTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:text="00:00.00"
+                android:textColor="@color/geneo_text_primary"
+                android:textSize="38sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingBottom="6dp">
+
+                <ImageButton
+                    android:id="@+id/btnLap"
+                    android:layout_width="46dp"
+                    android:layout_height="46dp"
+                    android:layout_marginEnd="18dp"
+                    android:background="@drawable/bg_round_button"
+                    android:contentDescription="Lap"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_flag" />
+
+                <ImageButton
+                    android:id="@+id/btnStartPauseStopwatch"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:layout_marginEnd="18dp"
+                    android:background="@drawable/bg_round_button_accent"
+                    android:contentDescription="Start"
+                    android:padding="16dp"
+                    android:src="@drawable/ic_play" />
+
+                <ImageButton
+                    android:id="@+id/btnResetStopwatch"
+                    android:layout_width="46dp"
+                    android:layout_height="46dp"
+                    android:background="@drawable/bg_round_button"
+                    android:contentDescription="Reset"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_reset" />
+            </LinearLayout>
+
+            <!-- Laps: fills whatever space is left, growing as the card is
+                 resized taller, so there's more room to see lap history. -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="4dp"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/lapsContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="14dp" />
+            </ScrollView>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Drag-to-resize handle, bottom-right corner. -->
+    <FrameLayout
+        android:id="@+id/resizeHandle"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|end"
+        android:elevation="16dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="6dp"
+            android:alpha="0.85"
+            android:src="@drawable/ic_resize_handle" />
+    </FrameLayout>
+
+</FrameLayout>

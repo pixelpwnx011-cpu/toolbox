@@ -1,0 +1,910 @@
+package com.geneo.smartboard.overlay
+
+import android.animation.ValueAnimator
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.IBinder
+import android.util.DisplayMetrics
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.view.animation.OvershootInterpolator
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.app.NotificationCompat
+
+class OverlayService : Service() {
+
+    companion object {
+        private const val CHANNEL_ID = "geneo_toolbox_channel"
+        private const val NOTIF_ID = 1001
+
+        // Floor for the calculator's resize handle — small enough to save
+        // screen space, big enough that the keys stay tappable.
+        private const val CALC_MIN_WIDTH_DP = 220
+        private const val CALC_MIN_HEIGHT_DP = 320
+        private const val STOPWATCH_MIN_WIDTH_DP = 230
+        private const val STOPWATCH_MIN_HEIGHT_DP = 260
+        private const val TIMER_MIN_WIDTH_DP = 230
+        private const val TIMER_MIN_HEIGHT_DP = 280
+        private const val BROWSER_MIN_WIDTH_DP = 240
+        private const val BROWSER_MIN_HEIGHT_DP = 280
+        private const val PDF_MIN_WIDTH_DP = 260
+        private const val PDF_MIN_HEIGHT_DP = 320
+
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
+        fun start(context: Context) {
+            val intent = Intent(context, OverlayService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, OverlayService::class.java))
+        }
+    }
+
+    private lateinit var windowManager: WindowManager
+    private lateinit var inflater: LayoutInflater
+    private var touchSlop = 16
+
+    // Bubble
+    private var bubbleView: View? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
+    private var isDockedRight = true
+
+    // Menu
+    private var menuView: View? = null
+    private var menuParams: WindowManager.LayoutParams? = null
+    private var isMenuOpen = false
+    private var isAnimatingMenu = false
+
+    // Tool windows
+    private var stopwatchView: View? = null
+    private var stopwatchController: StopwatchController? = null
+    private var timerView: View? = null
+    private var timerController: TimerController? = null
+    private var calculatorView: View? = null
+    private var calculatorController: CalculatorController? = null
+
+    // Book browser (subject/chapter picker) — two-state UI, no separate window per state
+    private var browserView: View? = null
+    private var browserShowingChapters = false
+    private var browserCurrentSubject: Subject? = null
+
+    // PDF chapter viewer
+    private var pdfView: View? = null
+    private var pdfController: PdfChapterController? = null
+    private var pdfSavedWidthPx: Int? = null
+    private var pdfSavedHeightPx: Int? = null
+
+    // Pen / annotation overlay
+    private var penView: View? = null
+    // Remembers the last size the user dragged the calculator to, so
+    // reopening it after closing restores that size instead of resetting.
+    private var calcSavedWidthPx: Int? = null
+    private var calcSavedHeightPx: Int? = null
+    private var stopwatchSavedWidthPx: Int? = null
+    private var stopwatchSavedHeightPx: Int? = null
+    private var timerSavedWidthPx: Int? = null
+    private var timerSavedHeightPx: Int? = null
+    private var browserSavedWidthPx: Int? = null
+    private var browserSavedHeightPx: Int? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        inflater = LayoutInflater.from(this)
+        touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        createNotificationChannel()
+        addBubble()
+        isRunning = true
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(NOTIF_ID, buildNotification())
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isRunning = false
+        removeMenu(animate = false)
+        closeStopwatch()
+        closeTimer()
+        closeCalculator()
+        closeBookBrowser()
+        closePdfViewer()
+        closePen()
+        bubbleView?.let { runCatching { windowManager.removeView(it) } }
+        bubbleView = null
+    }
+
+    // ---------------------------------------------------------------------
+    // Notification
+    // ---------------------------------------------------------------------
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notif_channel_name),
+                NotificationManager.IMPORTANCE_MIN
+            )
+            channel.setShowBadge(false)
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(): android.app.Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java)
+        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_IMMUTABLE
+        } else 0
+        val pendingIntent = PendingIntent.getActivity(this, 0, openAppIntent, pendingFlags)
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_bubble_grid)
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText(getString(R.string.notif_text))
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .build()
+    }
+
+    // ---------------------------------------------------------------------
+    // Bubble
+    // ---------------------------------------------------------------------
+
+    private fun overlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
+
+    private fun screenSize(): Pair<Int, Int> {
+        val dm = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getMetrics(dm)
+        return dm.widthPixels to dm.heightPixels
+    }
+
+    private fun addBubble() {
+        if (bubbleView != null) return
+        val view = inflater.inflate(R.layout.overlay_bubble, null)
+        val (screenW, screenH) = screenSize()
+        val bubbleSizePx = dp(56)
+
+        val params = WindowManager.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = screenW - bubbleSizePx - dp(8)
+        params.y = (screenH * 0.35f).toInt()
+
+        val dragHelper = DragHelper(
+            windowManager = windowManager,
+            targetView = view,
+            params = params,
+            touchSlopPx = touchSlop,
+            onTap = { safeRun("bubble tap") { toggleMenu() } },
+            onDragStart = {
+                safeRun("bubble drag start") { if (isMenuOpen) removeMenu(animate = false) }
+            },
+            onDragEnd = { finalX, _ ->
+                safeRun("bubble drag end") { snapToEdge(view, params, finalX) }
+            }
+        )
+        view.setOnTouchListener(dragHelper)
+
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) {
+            // Some devices/launchers reject overlay windows in edge cases (revoked
+            // permission mid-session, device policy, etc). Fail safe: stop the
+            // service instead of leaving it running with nothing on screen.
+            android.util.Log.w("OverlayService", "Failed to add bubble overlay view")
+            stopSelf()
+            return
+        }
+        bubbleView = view
+        bubbleParams = params
+        isDockedRight = params.x + bubbleSizePx / 2 > screenW / 2
+    }
+
+    private fun snapToEdge(view: View, params: WindowManager.LayoutParams, currentX: Int) {
+        val (screenW, _) = screenSize()
+        val bubbleSizePx = dp(56)
+        val margin = dp(8)
+        val targetX = if (currentX + bubbleSizePx / 2 < screenW / 2) {
+            margin
+        } else {
+            screenW - bubbleSizePx - margin
+        }
+        isDockedRight = targetX != margin
+
+        val animator = ValueAnimator.ofInt(currentX, targetX)
+        animator.duration = 220
+        animator.interpolator = android.view.animation.DecelerateInterpolator()
+        animator.addUpdateListener {
+            params.x = it.animatedValue as Int
+            runCatching { windowManager.updateViewLayout(view, params) }
+        }
+        animator.start()
+    }
+
+    // ---------------------------------------------------------------------
+    // Menu (stopwatch / timer / calculator picker)
+    // ---------------------------------------------------------------------
+
+    private fun toggleMenu() {
+        if (isAnimatingMenu) return
+        if (isMenuOpen) {
+            removeMenu(animate = true)
+        } else {
+            showMenu()
+        }
+    }
+
+    private fun showMenu() {
+        val bubble = bubbleView ?: return
+        val bParams = bubbleParams ?: return
+        if (menuView != null) return
+
+        val view = inflater.inflate(R.layout.overlay_menu, null)
+        view.layoutDirection = if (isDockedRight) View.LAYOUT_DIRECTION_LTR else View.LAYOUT_DIRECTION_RTL
+        view.alpha = 1f
+
+        val params = WindowManager.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = bParams.x
+        params.y = bParams.y
+
+        // Prime the 5 rows as invisible/scaled-down; they'll animate in once positioned.
+        val items = listOf(
+            view.findViewById<View>(R.id.itemPen),
+            view.findViewById<View>(R.id.itemBooks),
+            view.findViewById<View>(R.id.itemCalculator),
+            view.findViewById<View>(R.id.itemTimer),
+            view.findViewById<View>(R.id.itemStopwatch)
+        )
+        items.forEach {
+            it.alpha = 0f
+            it.scaleX = 0.6f
+            it.scaleY = 0.6f
+            it.translationY = dp(16).toFloat()
+        }
+
+        view.findViewById<View>(R.id.btnPen).setOnClickListener {
+            safeRun("open pen") { onToolChosen { openPen() } }
+        }
+        view.findViewById<View>(R.id.btnBooks).setOnClickListener {
+            safeRun("open books") { onToolChosen { openBookBrowser() } }
+        }
+        view.findViewById<View>(R.id.btnCalculator).setOnClickListener {
+            safeRun("open calculator") { onToolChosen { openCalculator() } }
+        }
+        view.findViewById<View>(R.id.btnTimer).setOnClickListener {
+            safeRun("open timer") { onToolChosen { openTimer() } }
+        }
+        view.findViewById<View>(R.id.btnStopwatch).setOnClickListener {
+            safeRun("open stopwatch") { onToolChosen { openStopwatch() } }
+        }
+
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) {
+            android.util.Log.w("OverlayService", "Failed to add menu overlay view")
+            isMenuOpen = false
+            return
+        }
+        menuView = view
+        menuParams = params
+        isMenuOpen = true
+        isAnimatingMenu = true
+
+        // Wait for a real measurement pass, then reposition flush against the
+        // bubble and play the staggered entrance animation.
+        view.post {
+            val (screenW, screenH) = screenSize()
+            val bubbleSizePx = dp(56)
+            val menuW = view.width
+            val menuH = view.height
+
+            params.x = if (isDockedRight) {
+                (bParams.x + bubbleSizePx) - menuW
+            } else {
+                bParams.x
+            }.coerceIn(0, (screenW - menuW).coerceAtLeast(0))
+
+            val spaceAbove = bParams.y
+            params.y = if (spaceAbove >= menuH + dp(12)) {
+                bParams.y - menuH - dp(8)
+            } else {
+                bParams.y + bubbleSizePx + dp(8)
+            }.coerceIn(0, (screenH - menuH).coerceAtLeast(0))
+
+            runCatching { windowManager.updateViewLayout(view, params) }
+
+            val overshoot = OvershootInterpolator(1.6f)
+            items.forEachIndexed { index, item ->
+                item.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .translationY(0f)
+                    .setStartDelay(index * 55L)
+                    .setDuration(220)
+                    .setInterpolator(overshoot)
+                    .withEndAction { if (index == items.lastIndex) isAnimatingMenu = false }
+                    .start()
+            }
+        }
+    }
+
+    private fun onToolChosen(action: () -> Unit) {
+        removeMenu(animate = true)
+        action()
+    }
+
+    private fun removeMenu(animate: Boolean) {
+        val view = menuView ?: run { isMenuOpen = false; return }
+        isMenuOpen = false
+
+        if (!animate) {
+            runCatching { windowManager.removeView(view) }
+            menuView = null
+            menuParams = null
+            isAnimatingMenu = false
+            return
+        }
+
+        isAnimatingMenu = true
+        val items = listOf(
+            view.findViewById<View>(R.id.itemStopwatch),
+            view.findViewById<View>(R.id.itemTimer),
+            view.findViewById<View>(R.id.itemCalculator),
+            view.findViewById<View>(R.id.itemBooks),
+            view.findViewById<View>(R.id.itemPen)
+        )
+        items.forEachIndexed { index, item ->
+            item.animate()
+                .alpha(0f)
+                .scaleX(0.6f)
+                .scaleY(0.6f)
+                .translationY(dp(16).toFloat())
+                .setStartDelay(index * 40L)
+                .setDuration(150)
+                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .withEndAction {
+                    if (index == items.lastIndex) {
+                        runCatching { windowManager.removeView(view) }
+                        if (menuView === view) {
+                            menuView = null
+                            menuParams = null
+                        }
+                        isAnimatingMenu = false
+                    }
+                }
+                .start()
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Tool windows
+    // ---------------------------------------------------------------------
+
+    private fun addToolWindow(
+        view: View,
+        headerId: Int,
+        widthPx: Int = ViewGroup.LayoutParams.WRAP_CONTENT,
+        heightPx: Int = ViewGroup.LayoutParams.WRAP_CONTENT,
+        absolutePosition: Boolean = false
+    ): WindowManager.LayoutParams? {
+        val params = WindowManager.LayoutParams(
+            widthPx,
+            heightPx,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+
+        if (absolutePosition) {
+            // Used by resizable windows (the calculator): a fixed top-left anchor
+            // means growing width/height only extends to the right/bottom, which
+            // is what people expect when dragging a bottom-right resize handle.
+            val (screenW, screenH) = screenSize()
+            params.gravity = Gravity.TOP or Gravity.START
+            params.x = ((screenW - widthPx) / 2).coerceAtLeast(0)
+            params.y = ((screenH - heightPx) / 2).coerceAtLeast(0)
+        } else {
+            params.gravity = Gravity.CENTER
+            params.x = 0
+            params.y = 0
+        }
+
+        view.alpha = 0f
+        view.scaleX = 0.9f
+        view.scaleY = 0.9f
+
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) {
+            android.util.Log.w("OverlayService", "Failed to add tool overlay window")
+            return null
+        }
+
+        val header = view.findViewById<View>(headerId)
+        val dragHelper = DragHelper(
+            windowManager = windowManager,
+            targetView = view,
+            params = params,
+            touchSlopPx = touchSlop,
+            onTap = { /* tapping the header does nothing; drag to move, X to close */ }
+        )
+        header.setOnTouchListener(dragHelper)
+
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(180)
+            .setInterpolator(OvershootInterpolator(1.2f))
+            .start()
+
+        return params
+    }
+
+    private fun openStopwatch() {
+        if (stopwatchView != null) return
+        val view = inflater.inflate(R.layout.overlay_stopwatch, null)
+
+        val (screenW, screenH) = screenSize()
+        val minW = dp(STOPWATCH_MIN_WIDTH_DP)
+        val minH = dp(STOPWATCH_MIN_HEIGHT_DP)
+        val maxW = (screenW * 0.9f).toInt()
+        val maxH = (screenH * 0.9f).toInt()
+        val initW = (stopwatchSavedWidthPx ?: dp(270)).coerceIn(minW, maxW)
+        val initH = (stopwatchSavedHeightPx ?: dp(380)).coerceIn(minH, maxH)
+
+        val params = addToolWindow(
+            view,
+            R.id.stopwatchHeader,
+            widthPx = initW,
+            heightPx = initH,
+            absolutePosition = true
+        )
+        if (params == null) return
+
+        stopwatchController = runCatching { StopwatchController(view) }.getOrNull()
+        view.findViewById<View>(R.id.btnCloseStopwatch).setOnClickListener {
+            safeRun("close stopwatch") { closeStopwatch() }
+        }
+        setupResizeHandle(view, params, minW, minH, maxW, maxH) { w, h ->
+            stopwatchSavedWidthPx = w
+            stopwatchSavedHeightPx = h
+        }
+        stopwatchView = view
+    }
+
+    private fun closeStopwatch() {
+        val view = stopwatchView ?: return
+        stopwatchController?.stop()
+        stopwatchController = null
+        stopwatchView = null
+        runCatching { windowManager.removeView(view) }
+    }
+
+    private fun openTimer() {
+        if (timerView != null) return
+        val view = inflater.inflate(R.layout.overlay_timer, null)
+
+        val (screenW, screenH) = screenSize()
+        val minW = dp(TIMER_MIN_WIDTH_DP)
+        val minH = dp(TIMER_MIN_HEIGHT_DP)
+        val maxW = (screenW * 0.9f).toInt()
+        val maxH = (screenH * 0.9f).toInt()
+        val initW = (timerSavedWidthPx ?: dp(270)).coerceIn(minW, maxW)
+        val initH = (timerSavedHeightPx ?: dp(340)).coerceIn(minH, maxH)
+
+        val params = addToolWindow(
+            view,
+            R.id.timerHeader,
+            widthPx = initW,
+            heightPx = initH,
+            absolutePosition = true
+        )
+        if (params == null) return
+
+        timerController = runCatching { TimerController(view) }.getOrNull()
+        view.findViewById<View>(R.id.btnCloseTimer).setOnClickListener {
+            safeRun("close timer") { closeTimer() }
+        }
+        setupResizeHandle(view, params, minW, minH, maxW, maxH) { w, h ->
+            timerSavedWidthPx = w
+            timerSavedHeightPx = h
+        }
+        timerView = view
+    }
+
+    private fun closeTimer() {
+        val view = timerView ?: return
+        timerController?.stop()
+        timerController = null
+        timerView = null
+        runCatching { windowManager.removeView(view) }
+    }
+
+    private fun openCalculator() {
+        if (calculatorView != null) return
+        val view = inflater.inflate(R.layout.overlay_calculator, null)
+
+        val (screenW, screenH) = screenSize()
+        val minW = dp(CALC_MIN_WIDTH_DP)
+        val minH = dp(CALC_MIN_HEIGHT_DP)
+        val maxW = (screenW * 0.95f).toInt()
+        val maxH = (screenH * 0.9f).toInt()
+        val initW = (calcSavedWidthPx ?: dp(280)).coerceIn(minW, maxW)
+        val initH = (calcSavedHeightPx ?: dp(420)).coerceIn(minH, maxH)
+
+        val params = addToolWindow(
+            view,
+            R.id.calculatorHeader,
+            widthPx = initW,
+            heightPx = initH,
+            absolutePosition = true
+        )
+        if (params == null) return
+
+        val result = runCatching { CalculatorController(view) }
+        if (result.isFailure) {
+            android.util.Log.e("OverlayService", "Calculator failed to initialize", result.exceptionOrNull())
+            android.widget.Toast.makeText(
+                this,
+                "Calculator couldn't load — please try again",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            runCatching { windowManager.removeView(view) }
+            return
+        }
+        calculatorController = result.getOrNull()
+        view.findViewById<View>(R.id.btnCloseCalculator).setOnClickListener {
+            safeRun("close calculator") { closeCalculator() }
+        }
+        setupResizeHandle(view, params, minW, minH, maxW, maxH) { w, h ->
+            calcSavedWidthPx = w
+            calcSavedHeightPx = h
+        }
+        calculatorView = view
+    }
+
+    private fun closeCalculator() {
+        val view = calculatorView ?: return
+        calculatorController = null
+        calculatorView = null
+        runCatching { windowManager.removeView(view) }
+    }
+
+    // ---------------------------------------------------------------------
+    // Book browser (NCERT subjects -> chapters)
+    // ---------------------------------------------------------------------
+
+    private fun openBookBrowser() {
+        if (browserView != null) return
+        val view = inflater.inflate(R.layout.overlay_book_browser, null)
+
+        val (screenW, screenH) = screenSize()
+        val minW = dp(BROWSER_MIN_WIDTH_DP)
+        val minH = dp(BROWSER_MIN_HEIGHT_DP)
+        val maxW = (screenW * 0.9f).toInt()
+        val maxH = (screenH * 0.9f).toInt()
+        val initW = (browserSavedWidthPx ?: dp(300)).coerceIn(minW, maxW)
+        val initH = (browserSavedHeightPx ?: dp(420)).coerceIn(minH, maxH)
+
+        val params = addToolWindow(
+            view,
+            R.id.browserHeader,
+            widthPx = initW,
+            heightPx = initH,
+            absolutePosition = true
+        )
+        if (params == null) return
+
+        view.findViewById<View>(R.id.btnCloseBrowser).setOnClickListener {
+            safeRun("close books") { closeBookBrowser() }
+        }
+        view.findViewById<View>(R.id.btnBackBrowser).setOnClickListener {
+            safeRun("books back") { showSubjectList(view) }
+        }
+        setupResizeHandle(view, params, minW, minH, maxW, maxH) { w, h ->
+            browserSavedWidthPx = w
+            browserSavedHeightPx = h
+        }
+
+        browserCurrentSubject = null
+        browserShowingChapters = false
+        showSubjectList(view)
+        browserView = view
+    }
+
+    private fun closeBookBrowser() {
+        val view = browserView ?: return
+        browserView = null
+        browserCurrentSubject = null
+        browserShowingChapters = false
+        runCatching { windowManager.removeView(view) }
+    }
+
+    private fun showSubjectList(view: View) {
+        browserShowingChapters = false
+        browserCurrentSubject = null
+        view.findViewById<TextView>(R.id.tvBrowserTitle).text = "NCERT Books"
+        view.findViewById<View>(R.id.btnBackBrowser).visibility = View.GONE
+
+        val container = view.findViewById<LinearLayout>(R.id.browserListContainer)
+        container.removeAllViews()
+
+        val subjects = BookLibrary.load(this).filter { it.chapters.isNotEmpty() }
+        if (subjects.isEmpty()) {
+            addBrowserMessage(
+                container,
+                "No books imported yet. Open the Geneo Toolbox app -> Manage NCERT Library to import a folder."
+            )
+            return
+        }
+
+        for (subject in subjects) {
+            val row = inflater.inflate(R.layout.item_browser_row, container, false)
+            row.findViewById<TextView>(R.id.tvRowTitle).text = subject.name
+            row.findViewById<TextView>(R.id.tvRowMeta).text = "${subject.chapters.size} ch"
+            row.setOnClickListener {
+                safeRun("open subject") { showChapterList(view, subject) }
+            }
+            container.addView(row)
+        }
+    }
+
+    private fun showChapterList(view: View, subject: Subject) {
+        browserShowingChapters = true
+        browserCurrentSubject = subject
+        view.findViewById<TextView>(R.id.tvBrowserTitle).text = subject.name
+        view.findViewById<View>(R.id.btnBackBrowser).visibility = View.VISIBLE
+
+        val container = view.findViewById<LinearLayout>(R.id.browserListContainer)
+        container.removeAllViews()
+
+        for (chapter in subject.chapters) {
+            val row = inflater.inflate(R.layout.item_browser_row, container, false)
+            row.findViewById<TextView>(R.id.tvRowTitle).text = chapter.title
+            row.findViewById<TextView>(R.id.tvRowMeta).text = ""
+            row.setOnClickListener {
+                safeRun("open chapter") {
+                    val uri = chapter.pdfUri
+                    if (uri != null) {
+                        openPdfViewer("${subject.name} — ${chapter.title}", uri)
+                    }
+                }
+            }
+            container.addView(row)
+        }
+    }
+
+    private fun addBrowserMessage(container: LinearLayout, message: String) {
+        val tv = TextView(this)
+        tv.text = message
+        tv.setTextColor(resources.getColor(R.color.geneo_text_secondary, theme))
+        tv.textSize = 13f
+        container.addView(tv)
+    }
+
+    // ---------------------------------------------------------------------
+    // PDF chapter viewer
+    // ---------------------------------------------------------------------
+
+    private fun openPdfViewer(title: String, uriString: String) {
+        closePdfViewer() // only one chapter open at a time keeps this lightweight
+        val view = inflater.inflate(R.layout.overlay_pdfviewer, null)
+
+        val (screenW, screenH) = screenSize()
+        val minW = dp(PDF_MIN_WIDTH_DP)
+        val minH = dp(PDF_MIN_HEIGHT_DP)
+        val maxW = (screenW * 0.95f).toInt()
+        val maxH = (screenH * 0.9f).toInt()
+        val initW = (pdfSavedWidthPx ?: dp(320)).coerceIn(minW, maxW)
+        val initH = (pdfSavedHeightPx ?: dp(460)).coerceIn(minH, maxH)
+
+        val params = addToolWindow(
+            view,
+            R.id.pdfHeader,
+            widthPx = initW,
+            heightPx = initH,
+            absolutePosition = true
+        )
+        if (params == null) return
+
+        view.findViewById<TextView>(R.id.tvPdfTitle).text = title
+        view.findViewById<View>(R.id.btnClosePdf).setOnClickListener {
+            safeRun("close pdf") { closePdfViewer() }
+        }
+
+        val uri = runCatching { android.net.Uri.parse(uriString) }.getOrNull()
+        pdfController = if (uri != null) {
+            runCatching { PdfChapterController(view, this, uri) }.getOrNull()
+        } else null
+
+        if (pdfController == null) {
+            view.findViewById<View>(R.id.pdfContinuousView).visibility = View.GONE
+            view.findViewById<TextView>(R.id.tvPdfMessage).apply {
+                visibility = View.VISIBLE
+                text = "Couldn't open this chapter."
+            }
+        }
+
+        // The continuous PDF view relayouts and re-renders itself automatically
+        // via onSizeChanged when the window is resized — no extra hook needed here.
+        setupResizeHandle(view, params, minW, minH, maxW, maxH) { w, h ->
+            pdfSavedWidthPx = w
+            pdfSavedHeightPx = h
+        }
+
+        pdfView = view
+    }
+
+    private fun closePdfViewer() {
+        val view = pdfView ?: return
+        pdfController?.close()
+        pdfController = null
+        pdfView = null
+        runCatching { windowManager.removeView(view) }
+    }
+
+    // ---------------------------------------------------------------------
+    // Pen (full-screen annotation, works over anything on screen)
+    // ---------------------------------------------------------------------
+
+    private fun openPen() {
+        if (penView != null) return
+        val view = inflater.inflate(R.layout.overlay_pen, null)
+
+        val params = WindowManager.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = 0
+        params.y = 0
+
+        view.alpha = 0f
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) {
+            android.util.Log.w("OverlayService", "Failed to add pen overlay window")
+            return
+        }
+
+        val canvas = view.findViewById<PenCanvasView>(R.id.penCanvas)
+        runCatching { PenToolbarController(view, canvas) }
+
+        view.findViewById<View>(R.id.btnClosePen).setOnClickListener {
+            safeRun("close pen") { closePen() }
+        }
+
+        view.animate().alpha(1f).setDuration(180).start()
+        penView = view
+    }
+
+    private fun closePen() {
+        val view = penView ?: return
+        penView = null
+        runCatching { windowManager.removeView(view) }
+    }
+
+    /**
+     * Wires a tool window's bottom-right corner resize handle (present in
+     * overlay_calculator.xml, overlay_stopwatch.xml, overlay_timer.xml) to
+     * freely resize the window by dragging — width and height move
+     * independently, within the given min/max bounds. [onResized] is called
+     * on release so the caller can remember the new size for next time.
+     */
+    private fun setupResizeHandle(
+        view: View,
+        params: WindowManager.LayoutParams,
+        minW: Int,
+        minH: Int,
+        maxW: Int,
+        maxH: Int,
+        onResized: (Int, Int) -> Unit
+    ) {
+        val handle = view.findViewById<View>(R.id.resizeHandle) ?: return
+
+        var startWidth = params.width
+        var startHeight = params.height
+        var startTouchX = 0f
+        var startTouchY = 0f
+
+        handle.setOnTouchListener { _, event ->
+            try {
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        startWidth = params.width
+                        startHeight = params.height
+                        startTouchX = event.rawX
+                        startTouchY = event.rawY
+                        true
+                    }
+
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - startTouchX).toInt()
+                        val dy = (event.rawY - startTouchY).toInt()
+                        params.width = (startWidth + dx).coerceIn(minW, maxW)
+                        params.height = (startHeight + dy).coerceIn(minH, maxH)
+                        runCatching { windowManager.updateViewLayout(view, params) }
+                        true
+                    }
+
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        onResized(params.width, params.height)
+                        true
+                    }
+
+                    else -> false
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("OverlayService", "Recovered from error while resizing", t)
+                true
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Utils
+    // ---------------------------------------------------------------------
+
+    /** Runs a UI callback (button tap, drag callback) without ever letting an
+     *  exception escape and kill the whole overlay service/process. */
+    private fun safeRun(tag: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            android.util.Log.w("OverlayService", "Recovered from error in $tag", t)
+        }
+    }
+
+    private fun dp(value: Int): Int {
+        val density = resources.displayMetrics.density
+        return (value * density).toInt()
+    }
+}

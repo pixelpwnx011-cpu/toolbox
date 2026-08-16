@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="geneo_primary">#4A56E2</color>
+    <color name="geneo_primary_dark">#3642B5</color>
+    <color name="geneo_accent">#7B61FF</color>
+    <color name="geneo_bg">#12142B</color>
+    <color name="geneo_card">#1E2140</color>
+    <color name="geneo_card_light">#262A52</color>
+    <color name="geneo_text_primary">#FFFFFF</color>
+    <color name="geneo_text_secondary">#B7BBDD</color>
+    <color name="geneo_danger">#FF5A5F</color>
+    <color name="geneo_success">#33D69F</color>
+    <color name="geneo_warning">#FFB020</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>

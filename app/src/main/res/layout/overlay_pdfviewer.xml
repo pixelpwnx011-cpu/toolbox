@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pdfOuterRoot"
+    android:layout_width="320dp"
+    android:layout_height="460dp">
+
+    <LinearLayout
+        android:id="@+id/pdfRoot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_tool_card"
+        android:elevation="14dp"
+        android:orientation="vertical">
+
+        <!-- Header / drag bar -->
+        <LinearLayout
+            android:id="@+id/pdfHeader"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_tool_header"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_book" />
+
+            <TextView
+                android:id="@+id/tvPdfTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Chapter"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnClosePdf"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Close"
+                android:padding="7dp"
+                android:src="@drawable/ic_close" />
+        </LinearLayout>
+
+        <!-- Page area fills whatever space is left -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#0A0A18">
+
+            <com.geneo.smartboard.overlay.PdfContinuousView
+                android:id="@+id/pdfContinuousView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/tvPdfMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:padding="24dp"
+                android:text="Loading…"
+                android:textColor="@color/geneo_text_secondary"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Read-only page position readout — pinch to zoom, drag to scroll -->
+        <TextView
+            android:id="@+id/tvPageIndicator"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="8dp"
+            android:text="Page 1 / 1"
+            android:textColor="@color/geneo_text_secondary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/resizeHandle"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|end"
+        android:elevation="16dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="6dp"
+            android:alpha="0.85"
+            android:src="@drawable/ic_resize_handle" />
+    </FrameLayout>
+
+</FrameLayout>
