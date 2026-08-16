@@ -94,6 +94,11 @@ class OverlayService : Service() {
 
     // Pen / annotation overlay
     private var penView: View? = null
+    // Remembers each tool's last-used size so reopening the pen tool restores
+    // exactly what was set before, instead of resetting to defaults.
+    private var penSavedPenSizeDp: Int? = null
+    private var penSavedHighlighterSizeDp: Int? = null
+    private var penSavedEraserSizeDp: Int? = null
     // Remembers the last size the user dragged the calculator to, so
     // reopening it after closing restores that size instead of resetting.
     private var calcSavedWidthPx: Int? = null
@@ -816,6 +821,12 @@ class OverlayService : Service() {
         }
 
         val canvas = view.findViewById<PenCanvasView>(R.id.penCanvas)
+        val savedPen = penSavedPenSizeDp
+        val savedHi = penSavedHighlighterSizeDp
+        val savedEraser = penSavedEraserSizeDp
+        if (savedPen != null && savedHi != null && savedEraser != null) {
+            runCatching { canvas.restoreSizes(savedPen, savedHi, savedEraser) }
+        }
         runCatching { PenToolbarController(view, canvas) }
 
         view.findViewById<View>(R.id.btnClosePen).setOnClickListener {
@@ -828,6 +839,12 @@ class OverlayService : Service() {
 
     private fun closePen() {
         val view = penView ?: return
+        runCatching {
+            val canvas = view.findViewById<PenCanvasView>(R.id.penCanvas)
+            penSavedPenSizeDp = canvas.penSizeDp()
+            penSavedHighlighterSizeDp = canvas.highlighterSizeDp()
+            penSavedEraserSizeDp = canvas.eraserSizeDp()
+        }
         penView = null
         runCatching { windowManager.removeView(view) }
     }

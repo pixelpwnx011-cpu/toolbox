@@ -99,7 +99,11 @@ class PdfContinuousView @JvmOverloads constructor(
     })
 
     fun attach(pdfRenderer: PdfRenderer) {
-        release()
+        // NOTE: no release() call here. attach() only ever runs on a fresh
+        // instance (a new chapter open = a newly inflated view), so there is
+        // nothing to release yet — and release() shuts down renderExecutor
+        // permanently, which would kill background rendering before this
+        // instance ever renders a single page.
         released = false
         renderer = pdfRenderer
         buildPageMetadata()
@@ -287,44 +291,52 @@ class PdfContinuousView @JvmOverloads constructor(
     }
 
     private fun queueRenderPage(index: Int) {
-        if (index !in pages.indices) return
+        if (index !in pages.indices || released) return
         val meta = pages[index]
         val targetWidth = renderWidthPx
         val targetHeight = meta.heightPx.toInt().coerceAtLeast(1)
 
-        renderExecutor.execute {
-            if (released) {
-                synchronized(pendingRenders) { pendingRenders.remove(index) }
-                return@execute
-            }
-            val bmp = runCatching {
-                val r = renderer ?: return@runCatching null
-                synchronized(rendererLock) {
-                    if (released) return@synchronized null
-                    val page = r.openPage(index)
-                    val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-                    bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    page.close()
-                    bitmap
+        val submitted = runCatching {
+            renderExecutor.execute {
+                if (released) {
+                    synchronized(pendingRenders) { pendingRenders.remove(index) }
+                    return@execute
                 }
-            }.getOrNull()
-
-            mainHandler.post {
-                synchronized(pendingRenders) { pendingRenders.remove(index) }
-                if (released || bmp == null) {
-                    bmp?.recycle()
-                    return@post
-                }
-                synchronized(bitmapCache) {
-                    if (bitmapCache.size >= maxCachedPages) {
-                        val farthest = bitmapCache.keys.maxByOrNull { kotlin.math.abs(it - index) }
-                        if (farthest != null) bitmapCache.remove(farthest)?.recycle()
+                val bmp = runCatching {
+                    val r = renderer ?: return@runCatching null
+                    synchronized(rendererLock) {
+                        if (released) return@synchronized null
+                        val page = r.openPage(index)
+                        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                        bitmap.eraseColor(Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        bitmap
                     }
-                    bitmapCache[index] = bmp
+                }.getOrNull()
+
+                mainHandler.post {
+                    synchronized(pendingRenders) { pendingRenders.remove(index) }
+                    if (released || bmp == null) {
+                        bmp?.recycle()
+                        return@post
+                    }
+                    synchronized(bitmapCache) {
+                        if (bitmapCache.size >= maxCachedPages) {
+                            val farthest = bitmapCache.keys.maxByOrNull { kotlin.math.abs(it - index) }
+                            if (farthest != null) bitmapCache.remove(farthest)?.recycle()
+                        }
+                        bitmapCache[index] = bmp
+                    }
+                    invalidate()
                 }
-                invalidate()
             }
+        }.isSuccess
+
+        // If the executor rejected the task (e.g. it was already shut down),
+        // don't leave this page stuck marked as "pending" forever.
+        if (!submitted) {
+            synchronized(pendingRenders) { pendingRenders.remove(index) }
         }
     }
 

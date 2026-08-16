@@ -24,6 +24,11 @@ enum class PenType(val widthDp: Int, val alpha: Int) {
  * Kept lightweight on purpose: strokes are plain Path objects in a list, no
  * bitmap caching or smoothing — perfectly fine for a normal annotation
  * session and much simpler/cheaper than a bitmap-backed canvas.
+ *
+ * Pen, Highlighter, and Eraser each keep their OWN size independently —
+ * switching between them (or picking a color, which doesn't touch size at
+ * all) never resets another tool's size. Sizes start at each preset's
+ * sensible default but only change when the user actually adjusts them.
  */
 class PenCanvasView @JvmOverloads constructor(
     context: Context,
@@ -38,8 +43,16 @@ class PenCanvasView @JvmOverloads constructor(
 
     private var mode = Mode.DRAW
     private var color = Color.parseColor("#FF3B30") // default red
-    private var penWidthDp = PenType.PEN.widthDp
-    private var penAlpha = PenType.PEN.alpha
+    private var currentPenType = PenType.PEN
+
+    // Independent, per-tool size state — this is the fix: previously a single
+    // shared width field got overwritten to the preset default every time
+    // setPenType() ran, so switching tools (or switching away and back)
+    // silently discarded any manual size adjustment.
+    private val penTypeWidths = mutableMapOf(
+        PenType.PEN to PenType.PEN.widthDp,
+        PenType.HIGHLIGHTER to PenType.HIGHLIGHTER.widthDp
+    )
     private var eraserWidthDp = 26
 
     enum class Mode { DRAW, ERASE }
@@ -57,9 +70,10 @@ class PenCanvasView @JvmOverloads constructor(
     }
 
     fun setPenType(type: PenType) {
-        penWidthDp = type.widthDp
-        penAlpha = type.alpha
+        currentPenType = type
         mode = Mode.DRAW
+        // Intentionally does NOT touch penTypeWidths — size stays whatever it
+        // was last set to for this specific type.
     }
 
     fun setEraseMode() {
@@ -72,17 +86,32 @@ class PenCanvasView @JvmOverloads constructor(
         if (mode == Mode.ERASE) {
             eraserWidthDp = (eraserWidthDp + deltaDp).coerceIn(10, 90)
         } else {
-            penWidthDp = (penWidthDp + deltaDp).coerceIn(2, 40)
+            val current = penTypeWidths[currentPenType] ?: currentPenType.widthDp
+            penTypeWidths[currentPenType] = (current + deltaDp).coerceIn(2, 40)
         }
     }
 
-    /** Current stroke width in dp for whichever mode (pen or eraser) is active right now. */
-    fun activeSizeDp(): Int = if (mode == Mode.ERASE) eraserWidthDp else penWidthDp
+    /** Current stroke width in dp for whichever mode/type is active right now. */
+    fun activeSizeDp(): Int =
+        if (mode == Mode.ERASE) eraserWidthDp else (penTypeWidths[currentPenType] ?: currentPenType.widthDp)
 
     fun clearAll() {
         strokes.clear()
         currentPath = null
         invalidate()
+    }
+
+    // --- Size persistence across closing/reopening the pen tool ---
+
+    fun penSizeDp(): Int = penTypeWidths[PenType.PEN] ?: PenType.PEN.widthDp
+    fun highlighterSizeDp(): Int = penTypeWidths[PenType.HIGHLIGHTER] ?: PenType.HIGHLIGHTER.widthDp
+    fun eraserSizeDp(): Int = eraserWidthDp
+
+    /** Restores sizes remembered from the last time the pen tool was used this session. */
+    fun restoreSizes(penDp: Int, highlighterDp: Int, eraserDp: Int) {
+        penTypeWidths[PenType.PEN] = penDp.coerceIn(2, 40)
+        penTypeWidths[PenType.HIGHLIGHTER] = highlighterDp.coerceIn(2, 40)
+        eraserWidthDp = eraserDp.coerceIn(10, 90)
     }
 
     // --- Drawing ---
@@ -102,8 +131,8 @@ class PenCanvasView @JvmOverloads constructor(
             p.strokeWidth = dp(eraserWidthDp)
         } else {
             p.color = color
-            p.alpha = penAlpha
-            p.strokeWidth = dp(penWidthDp)
+            p.alpha = currentPenType.alpha
+            p.strokeWidth = dp(penTypeWidths[currentPenType] ?: currentPenType.widthDp)
         }
         return p
     }
