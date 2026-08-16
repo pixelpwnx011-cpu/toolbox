@@ -1,0 +1,18 @@
+# Build outputs
+*.iml
+.gradle/
+build/
+app/build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Local config (machine-specific SDK path — never commit this)
+local.properties
+
+# Android Studio
+.idea/
+*.hprof
+
+# OS files
+.DS_Store
