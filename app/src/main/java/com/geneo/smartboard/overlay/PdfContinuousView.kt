@@ -173,6 +173,19 @@ class PdfContinuousView @JvmOverloads constructor(
         reportVisiblePage()
     }
 
+    /** Jumps directly to a page (used by the page-scrubber slider) at the current zoom level. */
+    fun scrollToPage(index: Int) {
+        if (index !in pages.indices) return
+        val scale = currentScale()
+        matrix.getValues(matrixValues)
+        matrixValues[Matrix.MTRANS_Y] = -(pages[index].yOffset * scale)
+        matrix.setValues(matrixValues)
+        clampMatrix()
+        invalidate()
+        renderVisiblePages()
+        reportVisiblePage()
+    }
+
     // --- Touch: pinch to zoom, drag to pan (works with one or two fingers) ---
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

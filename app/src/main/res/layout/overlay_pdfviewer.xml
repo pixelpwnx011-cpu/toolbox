@@ -76,17 +76,38 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <!-- Read-only page position readout — pinch to zoom, drag to scroll -->
-        <TextView
-            android:id="@+id/tvPageIndicator"
+        <!-- Page scrubber — pinch to zoom, drag to scroll, or drag this to jump -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:paddingTop="6dp"
-            android:paddingBottom="8dp"
-            android:text="Page 1 / 1"
-            android:textColor="@color/geneo_text_secondary"
-            android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp">
+
+            <SeekBar
+                android:id="@+id/pdfPageSeekBar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="1"
+                android:progress="0"
+                android:progressTint="@color/geneo_accent"
+                android:thumbTint="@color/geneo_accent" />
+
+            <TextView
+                android:id="@+id/tvPageIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="58dp"
+                android:gravity="end"
+                android:text="1 / 1"
+                android:textColor="@color/geneo_text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <FrameLayout
