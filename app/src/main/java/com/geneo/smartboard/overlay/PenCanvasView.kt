@@ -23,7 +23,7 @@ enum class PenType(val widthDp: Int, val alpha: Int) {
  * beneath it (any app, or Geneo Toolbox's own PDF viewer) since it's just
  * the topmost overlay window while active — no special integration needed.
  *
- * PERFORMANCE: this used to lag badly, for two reasons, both fixed here:
+ * PERFORMANCE: this used to lag badly, for three reasons, all fixed here:
  * 1. The whole view ran in LAYER_TYPE_SOFTWARE (CPU-only rendering,
  *    disabling the GPU entirely) just so the eraser's transparency-punch
  *    would work. Removed — completed strokes are now baked into their own
@@ -38,6 +38,12 @@ enum class PenType(val widthDp: Int, val alpha: Int) {
  *    live each frame, and only the eraser (which needs the transparency
  *    trick) uses a saveLayer — scoped to just that stroke's small bounding
  *    box, not the full screen.
+ * 3. Every touch-move called plain invalidate() with no arguments, which
+ *    forces Android to recomposite the ENTIRE screen on every single frame
+ *    of every stroke — on a large board display that's a lot of wasted
+ *    work for a half-inch line segment. invalidate() now takes an explicit
+ *    dirty rect scoped to just the new segment (padded by stroke width),
+ *    so only that small region is ever redrawn.
  *
  * Pen, Highlighter, and Eraser each keep their OWN size independently —
  * switching between them (or picking a color, which doesn't touch size at
@@ -55,6 +61,8 @@ class PenCanvasView @JvmOverloads constructor(
     private var currentPath: Path? = null
     private var currentPaint: Paint = freshPaint()
     private val liveBounds = RectF()
+    private var lastX = 0f
+    private var lastY = 0f
 
     private var mode = Mode.DRAW
     private var color = Color.parseColor("#FF3B30") // default red
@@ -190,21 +198,46 @@ class PenCanvasView @JvmOverloads constructor(
                 path.moveTo(event.x, event.y)
                 currentPath = path
                 currentPaint = paintForCurrentMode()
-                invalidate()
+                lastX = event.x
+                lastY = event.y
+                invalidateSegment(event.x, event.y, event.x, event.y)
             }
 
             MotionEvent.ACTION_MOVE -> {
                 currentPath?.lineTo(event.x, event.y)
-                invalidate()
+                invalidateSegment(lastX, lastY, event.x, event.y)
+                lastX = event.x
+                lastY = event.y
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                currentPath?.let { bakedCanvas?.drawPath(it, currentPaint) }
+                val path = currentPath
+                if (path != null) {
+                    bakedCanvas?.drawPath(path, currentPaint)
+                    path.computeBounds(liveBounds, false)
+                    val pad = currentPaint.strokeWidth
+                    invalidate(
+                        (liveBounds.left - pad).toInt(),
+                        (liveBounds.top - pad).toInt(),
+                        (liveBounds.right + pad).toInt() + 1,
+                        (liveBounds.bottom + pad).toInt() + 1
+                    )
+                }
                 currentPath = null
-                invalidate()
             }
         }
         return true
+    }
+
+    /** Invalidates only the small area a new line segment actually touches, instead of the whole screen. */
+    private fun invalidateSegment(x0: Float, y0: Float, x1: Float, y1: Float) {
+        val pad = currentPaint.strokeWidth + 4f
+        invalidate(
+            (kotlin.math.min(x0, x1) - pad).toInt(),
+            (kotlin.math.min(y0, y1) - pad).toInt(),
+            (kotlin.math.max(x0, x1) + pad).toInt() + 1,
+            (kotlin.math.max(y0, y1) + pad).toInt() + 1
+        )
     }
 
     private fun dp(value: Int): Float = value * resources.displayMetrics.density

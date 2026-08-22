@@ -12,7 +12,10 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
+import android.widget.OverScroller
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -33,6 +36,12 @@ import java.util.concurrent.TimeUnit
  *
  * Still lightweight: only pages near the current viewport are ever rendered
  * to a bitmap; everything else is recycled as you scroll past it.
+ *
+ * Flinging: a fast swipe keeps scrolling and decelerates smoothly (via
+ * OverScroller) instead of stopping dead the instant you lift your finger.
+ * Like a plain drag release, new pages are only rendered once the fling
+ * actually settles — not on every frame of the deceleration — so the motion
+ * itself stays smooth even if it crosses several unrendered pages.
  */
 class PdfContinuousView @JvmOverloads constructor(
     context: Context,
@@ -70,6 +79,11 @@ class PdfContinuousView @JvmOverloads constructor(
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var activePointerId = -1
+
+    private val scroller = OverScroller(context)
+    private var velocityTracker: VelocityTracker? = null
+    private val minFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
+    private val maxFlingVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity
 
     private val pagePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val placeholderPaint = Paint().apply { color = Color.WHITE }
@@ -193,12 +207,17 @@ class PdfContinuousView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                scroller.forceFinished(true) // grabbing the view stops any ongoing fling
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain()
+                velocityTracker?.addMovement(event)
                 lastTouchX = event.x
                 lastTouchY = event.y
                 activePointerId = event.getPointerId(0)
             }
 
             MotionEvent.ACTION_MOVE -> {
+                velocityTracker?.addMovement(event)
                 if (!scaleDetector.isInProgress && event.pointerCount == 1) {
                     val idx = event.findPointerIndex(activePointerId)
                     if (idx != -1) {
@@ -226,17 +245,93 @@ class PdfContinuousView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                var flung = false
+                if (event.actionMasked == MotionEvent.ACTION_UP && !scaleDetector.isInProgress) {
+                    velocityTracker?.let { vt ->
+                        vt.addMovement(event)
+                        vt.computeCurrentVelocity(1000, maxFlingVelocity.toFloat())
+                        val vx = vt.xVelocity
+                        val vy = vt.yVelocity
+                        if (kotlin.math.abs(vx) > minFlingVelocity || kotlin.math.abs(vy) > minFlingVelocity) {
+                            flung = startFling(vx, vy)
+                        }
+                    }
+                }
+                velocityTracker?.recycle()
+                velocityTracker = null
                 activePointerId = -1
-                renderVisiblePages() // dispatches to background thread, never blocks the UI
-                reportVisiblePage()
+                if (!flung) {
+                    renderVisiblePages() // dispatches to background thread, never blocks the UI
+                    reportVisiblePage()
+                }
             }
         }
         return true
     }
 
+    /** Kicks off a decelerating fling using the current release velocity. Returns false if there's nowhere to fling to. */
+    private fun startFling(velocityX: Float, velocityY: Float): Boolean {
+        val scale = currentScale()
+        matrix.getValues(matrixValues)
+        val startX = matrixValues[Matrix.MTRANS_X].toInt()
+        val startY = matrixValues[Matrix.MTRANS_Y].toInt()
+        val bounds = translateBounds(scale)
+        val minX = bounds[0].toInt()
+        val maxX = bounds[1].toInt()
+        val minY = bounds[2].toInt()
+        val maxY = bounds[3].toInt()
+        if (minX == maxX && minY == maxY) return false // nothing to scroll
+
+        scroller.fling(startX, startY, velocityX.toInt(), velocityY.toInt(), minX, maxX, minY, maxY)
+        postInvalidateOnAnimation()
+        return true
+    }
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) {
+            matrix.getValues(matrixValues)
+            matrixValues[Matrix.MTRANS_X] = scroller.currX.toFloat()
+            matrixValues[Matrix.MTRANS_Y] = scroller.currY.toFloat()
+            matrix.setValues(matrixValues)
+            invalidate()
+            postInvalidateOnAnimation()
+        } else if (initialized) {
+            // Fling just settled — this is when it's worth paying to render any
+            // newly-visible pages, same "defer heavy work until motion stops"
+            // approach used for a plain drag release.
+            renderVisiblePages()
+            reportVisiblePage()
+        }
+    }
+
     private fun currentScale(): Float {
         matrix.getValues(matrixValues)
         return matrixValues[Matrix.MSCALE_X]
+    }
+
+    /** [minTx, maxTx, minTy, maxTy] for the given scale — shared by clampMatrix() and the fling setup. */
+    private fun translateBounds(scale: Float): FloatArray {
+        val scaledW = contentWidthPx * scale
+        val scaledH = contentHeightPx * scale
+        val minTx: Float
+        val maxTx: Float
+        if (scaledW <= width) {
+            minTx = (width - scaledW) / 2f
+            maxTx = minTx
+        } else {
+            minTx = width - scaledW
+            maxTx = 0f
+        }
+        val minTy: Float
+        val maxTy: Float
+        if (scaledH <= height) {
+            minTy = (height - scaledH) / 2f
+            maxTy = minTy
+        } else {
+            minTy = height - scaledH
+            maxTy = 0f
+        }
+        return floatArrayOf(minTx, maxTx, minTy, maxTy)
     }
 
     private fun clampMatrix() {
@@ -248,13 +343,9 @@ class PdfContinuousView @JvmOverloads constructor(
         }
 
         matrix.getValues(matrixValues)
-        val scaledW = contentWidthPx * scale
-        val scaledH = contentHeightPx * scale
-
-        val tx = if (scaledW <= width) (width - scaledW) / 2f
-                 else matrixValues[Matrix.MTRANS_X].coerceIn(width - scaledW, 0f)
-        val ty = if (scaledH <= height) (height - scaledH) / 2f
-                 else matrixValues[Matrix.MTRANS_Y].coerceIn(height - scaledH, 0f)
+        val bounds = translateBounds(scale)
+        val tx = matrixValues[Matrix.MTRANS_X].coerceIn(bounds[0], bounds[1])
+        val ty = matrixValues[Matrix.MTRANS_Y].coerceIn(bounds[2], bounds[3])
 
         matrixValues[Matrix.MTRANS_X] = tx
         matrixValues[Matrix.MTRANS_Y] = ty
@@ -392,6 +483,9 @@ class PdfContinuousView @JvmOverloads constructor(
     /** Recycles all cached page bitmaps and stops background rendering. Does NOT close the PdfRenderer — the caller owns that. */
     fun release() {
         released = true
+        scroller.forceFinished(true)
+        velocityTracker?.recycle()
+        velocityTracker = null
         mainHandler.removeCallbacks(resizeSettleRunnable)
         mainHandler.removeCallbacksAndMessages(null)
         renderExecutor.shutdownNow()
