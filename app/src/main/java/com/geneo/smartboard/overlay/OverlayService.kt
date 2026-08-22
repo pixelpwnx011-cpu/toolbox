@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -40,6 +42,11 @@ class OverlayService : Service() {
         private const val PDF_MIN_WIDTH_DP = 260
         private const val PDF_MIN_HEIGHT_DP = 320
 
+        // How often the bubble/menu force themselves back to the very top of
+        // the overlay stack, in case some other app's own overlay window got
+        // added after ours and is now covering it.
+        private const val BRING_TO_FRONT_INTERVAL_MS = 10 * 60 * 1000L
+
         @Volatile
         var isRunning: Boolean = false
             private set
@@ -60,6 +67,13 @@ class OverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
     private lateinit var inflater: LayoutInflater
+    private val periodicHandler = Handler(Looper.getMainLooper())
+    private val bringToFrontRunnable = object : Runnable {
+        override fun run() {
+            safeRun("periodic bring-to-front") { reassertOverlayOrder() }
+            periodicHandler.postDelayed(this, BRING_TO_FRONT_INTERVAL_MS)
+        }
+    }
     private var touchSlop = 16
 
     // Bubble
@@ -120,6 +134,7 @@ class OverlayService : Service() {
         createNotificationChannel()
         addBubble()
         isRunning = true
+        periodicHandler.postDelayed(bringToFrontRunnable, BRING_TO_FRONT_INTERVAL_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -130,6 +145,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        periodicHandler.removeCallbacks(bringToFrontRunnable)
         removeMenu(animate = false)
         closeStopwatch()
         closeTimer()
@@ -661,6 +677,9 @@ class OverlayService : Service() {
         browserShowingChapters = false
         showSubjectList(view)
         browserView = view
+        // Delayed so this doesn't interrupt the entrance fade/scale animation
+        // addToolWindow() just started on this same view.
+        view.postDelayed({ safeRun("reassert order (browser)") { reassertOverlayOrder() } }, 220L)
     }
 
     private fun closeBookBrowser() {
@@ -784,6 +803,9 @@ class OverlayService : Service() {
         }
 
         pdfView = view
+        // Delayed so this doesn't interrupt the entrance fade/scale animation
+        // addToolWindow() just started on this same view.
+        view.postDelayed({ safeRun("reassert order (pdf)") { reassertOverlayOrder() } }, 220L)
     }
 
     private fun closePdfViewer() {
@@ -918,6 +940,39 @@ class OverlayService : Service() {
         } catch (t: Throwable) {
             android.util.Log.w("OverlayService", "Recovered from error in $tag", t)
         }
+    }
+
+    /**
+     * Re-adds a window to WindowManager using its existing LayoutParams — the
+     * standard trick to move a window to the very top of the current overlay
+     * stack, since WindowManager has no direct "bring to front" call. This
+     * moves it to the top system-wide, not just above our own other windows,
+     * which is exactly what's needed when some other app's overlay ends up
+     * covering ours.
+     */
+    private fun bringToFront(view: View?) {
+        if (view == null) return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        runCatching {
+            windowManager.removeView(view)
+            windowManager.addView(view, params)
+        }
+    }
+
+    /**
+     * Enforces the requested stacking order among our own overlay windows,
+     * bottom to top: the PDF viewer at the back, the NCERT book selector
+     * above it, and the bubble/menu popup always on top of both — so the
+     * bubble stays reachable and the book selector never ends up hidden
+     * behind an open chapter. Also used by the periodic bring-to-front timer,
+     * since re-adding a window always places it above every other app's
+     * overlay windows too, not just our own.
+     */
+    private fun reassertOverlayOrder() {
+        bringToFront(pdfView)
+        bringToFront(browserView)
+        bringToFront(bubbleView)
+        bringToFront(menuView)
     }
 
     private fun dp(value: Int): Int {
