@@ -47,6 +47,39 @@ build the `release` variant.
 5. The bubble appears on screen immediately, and will now also reappear
    automatically after every future reboot — no need to open the app again.
 
+## Boot-start reliability, especially on locked-down boards
+Two independent mechanisms bring the bubble back after a reboot:
+- **`BootReceiver`** — listens for Android's standard `BOOT_COMPLETED`
+  broadcast and starts the service directly. This is instant, but some
+  heavily customized board firmwares (a custom launcher, no real Settings
+  app, no visible "Autostart" toggle) suppress or delay boot broadcasts to
+  third-party apps in ways no in-app permission can override.
+- **`OverlayWatchdogWorker`** — a WorkManager job that checks every 15
+  minutes (the platform's minimum interval for periodic work) whether the
+  toolbox *should* be running and restarts it if it isn't. WorkManager
+  reschedules its own periodic jobs after every reboot automatically, via a
+  mechanism independent of `BootReceiver`, so this acts as a self-healing
+  safety net — even if the boot broadcast is suppressed, the bubble should
+  come back within 15 minutes of boot rather than staying down all day.
+  Scheduled automatically whenever the toolbox is enabled; canceled when
+  disabled.
+
+If a board still won't auto-start even with both of these in place, that
+almost always means the OEM firmware is actively blocking third-party
+background starts at a level neither mechanism can reach from inside the
+app. Things worth checking on the device itself:
+- A hidden "admin" or "engineer" mode in the custom launcher (a repeated
+  tap on a corner, a long-press, or a code entered somewhere) that unlocks
+  the full stock Android Settings, where a real per-app Autostart/battery
+  control usually lives.
+- If you have ADB access to the board, `adb shell dumpsys deviceidle
+  whitelist +com.geneo.smartboard.overlay` adds it to Android's standard
+  Doze whitelist directly (redundant with the in-app "Allow Background
+  Activity" button if that already worked, but worth trying if it didn't).
+- Contacting the board manufacturer's support — as the firmware vendor,
+  they'll know their own whitelisting mechanism for third-party apps, if
+  one exists.
+
 ## What was wrong with the calculator (fixed)
 The calculator used to format results with thousands-separator commas
 (e.g. `1,234`). That formatted string was then fed straight back into the

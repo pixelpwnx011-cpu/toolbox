@@ -65,6 +65,12 @@ class MainActivity : AppCompatActivity() {
             OverlayService.start(this)
             refreshStatus()
         }
+
+        // Idempotent (KEEP policy) — makes sure the watchdog is scheduled even
+        // if the toolbox was enabled before this feature existed in an update.
+        if (Prefs.isOverlayEnabled(this)) {
+            OverlayWatchdogWorker.schedule(this)
+        }
     }
 
     private fun requestOverlayPermission() {
@@ -129,9 +135,11 @@ class MainActivity : AppCompatActivity() {
         if (OverlayService.isRunning) {
             OverlayService.stop(this)
             Prefs.setOverlayEnabled(this, false)
+            OverlayWatchdogWorker.cancel(this)
         } else {
             OverlayService.start(this)
             Prefs.setOverlayEnabled(this, true)
+            OverlayWatchdogWorker.schedule(this)
         }
         refreshStatus()
     }
