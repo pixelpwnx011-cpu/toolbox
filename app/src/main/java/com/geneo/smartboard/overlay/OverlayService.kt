@@ -105,6 +105,11 @@ class OverlayService : Service() {
     private var pdfController: PdfChapterController? = null
     private var pdfSavedWidthPx: Int? = null
     private var pdfSavedHeightPx: Int? = null
+    private var pdfMinimizedIconView: View? = null
+
+    // Word meaning lookup popup
+    private var meaningView: View? = null
+    private var meaningController: WordMeaningController? = null
 
     // Pen / annotation overlay
     private var penView: View? = null
@@ -152,6 +157,7 @@ class OverlayService : Service() {
         closeCalculator()
         closeBookBrowser()
         closePdfViewer()
+        closeMeaningLookup()
         closePen()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null
@@ -781,10 +787,17 @@ class OverlayService : Service() {
         view.findViewById<View>(R.id.btnClosePdf).setOnClickListener {
             safeRun("close pdf") { closePdfViewer() }
         }
+        view.findViewById<View>(R.id.btnMinimizePdf).setOnClickListener {
+            safeRun("minimize pdf") { minimizePdfViewer() }
+        }
 
         val uri = runCatching { android.net.Uri.parse(uriString) }.getOrNull()
         pdfController = if (uri != null) {
-            runCatching { PdfChapterController(view, this, uri) }.getOrNull()
+            runCatching {
+                PdfChapterController(view, this, uri) { bitmap ->
+                    safeRun("word meaning lookup") { showMeaningLookup(bitmap) }
+                }
+            }.getOrNull()
         } else null
 
         if (pdfController == null) {
@@ -813,6 +826,145 @@ class OverlayService : Service() {
         pdfController?.close()
         pdfController = null
         pdfView = null
+        pdfMinimizedIconView?.let { runCatching { windowManager.removeView(it) } }
+        pdfMinimizedIconView = null
+        // Safe no-op via runCatching if the view was minimized (already
+        // detached from the window) rather than currently showing.
+        runCatching { windowManager.removeView(view) }
+    }
+
+    /**
+     * Hides the PDF window (without closing the chapter — the renderer, page
+     * cache, and current scroll/zoom position all stay alive in memory) and
+     * shows a small icon near the bubble. Tapping that icon brings the exact
+     * same window — same page, same zoom — straight back.
+     */
+    private fun minimizePdfViewer() {
+        val view = pdfView ?: return
+        runCatching { windowManager.removeView(view) }
+        showPdfMinimizedIcon()
+    }
+
+    private fun showPdfMinimizedIcon() {
+        if (pdfMinimizedIconView != null) return
+        val bParams = bubbleParams
+        val (screenW, screenH) = screenSize()
+        val iconD = dp(48)
+
+        val view = inflater.inflate(R.layout.overlay_pdf_minimized, null)
+        val params = WindowManager.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        // Docks just beneath wherever the bubble currently is; if that would
+        // run off the bottom of the screen, docks just above it instead.
+        val bubbleX = bParams?.x ?: (screenW - iconD - dp(8))
+        val bubbleY = bParams?.y ?: dp(120)
+        val bubbleSizePx = dp(56)
+        params.x = bubbleX
+        params.y = if (bubbleY + bubbleSizePx + iconD + dp(8) <= screenH) {
+            bubbleY + bubbleSizePx + dp(8)
+        } else {
+            (bubbleY - iconD - dp(8)).coerceAtLeast(0)
+        }
+
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) return
+
+        view.setOnClickListener {
+            safeRun("restore pdf") { restorePdfViewer() }
+        }
+        view.alpha = 0f
+        view.animate().alpha(1f).setDuration(150).start()
+        pdfMinimizedIconView = view
+    }
+
+    private fun restorePdfViewer() {
+        val view = pdfView ?: return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) return
+
+        pdfMinimizedIconView?.let { runCatching { windowManager.removeView(it) } }
+        pdfMinimizedIconView = null
+        view.postDelayed({ safeRun("reassert order (pdf restore)") { reassertOverlayOrder() } }, 60L)
+    }
+
+    // ---------------------------------------------------------------------
+    // Word meaning lookup popup
+    // ---------------------------------------------------------------------
+
+    private fun showMeaningLookup(bitmap: android.graphics.Bitmap) {
+        closeMeaningLookup() // only one lookup card at a time
+
+        val view = inflater.inflate(R.layout.overlay_word_meaning, null)
+        val params = WindowManager.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.CENTER
+        params.x = 0
+        params.y = 0
+
+        view.alpha = 0f
+        val added = runCatching { windowManager.addView(view, params) }.isSuccess
+        if (!added) {
+            bitmap.recycle()
+            return
+        }
+
+        val header = view.findViewById<View>(R.id.meaningHeader)
+        header.setOnTouchListener(
+            DragHelper(
+                windowManager = windowManager,
+                targetView = view,
+                params = params,
+                touchSlopPx = touchSlop,
+                onTap = {}
+            )
+        )
+        view.findViewById<View>(R.id.btnCloseMeaning).setOnClickListener {
+            safeRun("close meaning") { closeMeaningLookup() }
+        }
+        view.animate().alpha(1f).setDuration(150).start()
+
+        val controller = WordMeaningController(view)
+        controller.showLoading()
+        meaningController = controller
+        meaningView = view
+
+        val apiKey = Prefs.getOcrApiKey(this)
+        if (apiKey == null) {
+            controller.showError(
+                "No OCR.space API key set yet. Open the Geneo Toolbox app and add a free key under \"Word meaning lookup\"."
+            )
+            bitmap.recycle()
+            return
+        }
+
+        WordLookupHelper.lookup(bitmap, apiKey) { result, error ->
+            bitmap.recycle()
+            // The popup may have been closed while the lookup was in flight.
+            if (meaningView !== view) return@lookup
+            safeRun("show meaning result") {
+                if (result != null) controller.showResult(result) else controller.showError(error ?: "Lookup failed")
+            }
+        }
+    }
+
+    private fun closeMeaningLookup() {
+        val view = meaningView ?: return
+        meaningView = null
+        meaningController = null
         runCatching { windowManager.removeView(view) }
     }
 

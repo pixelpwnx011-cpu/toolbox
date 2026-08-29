@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +20,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvOverlayStatus: TextView
     private lateinit var tvServiceStatus: TextView
     private lateinit var tvBatteryStatus: TextView
+    private lateinit var tvOcrKeyStatus: TextView
+    private lateinit var etOcrApiKey: EditText
     private lateinit var btnGrantOverlay: Button
     private lateinit var btnToggleService: Button
     private lateinit var btnBatteryOptimization: Button
@@ -33,6 +36,8 @@ class MainActivity : AppCompatActivity() {
         tvOverlayStatus = findViewById(R.id.tvOverlayStatus)
         tvServiceStatus = findViewById(R.id.tvServiceStatus)
         tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
+        tvOcrKeyStatus = findViewById(R.id.tvOcrKeyStatus)
+        etOcrApiKey = findViewById(R.id.etOcrApiKey)
         btnGrantOverlay = findViewById(R.id.btnGrantOverlay)
         btnToggleService = findViewById(R.id.btnToggleService)
         btnBatteryOptimization = findViewById(R.id.btnBatteryOptimization)
@@ -43,6 +48,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnManageLibrary).setOnClickListener {
             startActivity(Intent(this, BookLibraryActivity::class.java))
         }
+        findViewById<Button>(R.id.btnSaveOcrKey).setOnClickListener { saveOcrKey() }
+
+        Prefs.getOcrApiKey(this)?.let { etOcrApiKey.setText(it) }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -144,6 +152,17 @@ class MainActivity : AppCompatActivity() {
         refreshStatus()
     }
 
+    private fun saveOcrKey() {
+        val key = etOcrApiKey.text.toString().trim()
+        if (key.isEmpty()) {
+            Toast.makeText(this, "Paste a key first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Prefs.setOcrApiKey(this, key)
+        Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+        refreshStatus()
+    }
+
     private fun hasOverlayPermission(): Boolean {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
     }
@@ -179,6 +198,14 @@ class MainActivity : AppCompatActivity() {
             btnBatteryOptimization.text = getString(R.string.disable_battery_optimization)
             btnBatteryOptimization.isEnabled = true
             btnBatteryOptimization.alpha = 1f
+        }
+
+        if (Prefs.getOcrApiKey(this) != null) {
+            tvOcrKeyStatus.text = "Status: Key saved — word lookup is enabled"
+            tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_success))
+        } else {
+            tvOcrKeyStatus.text = "Status: Not set"
+            tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_warning))
         }
     }
 }

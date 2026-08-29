@@ -212,6 +212,65 @@
                 android:text="Manage NCERT Library" />
         </LinearLayout>
 
+        <!-- Step 5 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_tool_card"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Step 5 (optional) · Word meaning lookup"
+                android:textColor="@color/geneo_text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Lets you select a word in the PDF viewer and see its meaning. Needs a free OCR.space API key (no Google account, no card — sign up at ocr.space/ocrapi, takes under a minute) and an internet connection."
+                android:textColor="@color/geneo_text_secondary"
+                android:textSize="13sp" />
+
+            <EditText
+                android:id="@+id/etOcrApiKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:autofillHints="password"
+                android:background="@drawable/bg_calc_digit"
+                android:hint="Paste your OCR.space API key"
+                android:inputType="textVisiblePassword"
+                android:padding="12dp"
+                android:textColor="@color/geneo_text_primary"
+                android:textColorHint="@color/geneo_text_secondary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvOcrKeyStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Status: Not set"
+                android:textColor="@color/geneo_warning"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnSaveOcrKey"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:backgroundTint="@color/geneo_primary"
+                android:text="Save Key" />
+        </LinearLayout>
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

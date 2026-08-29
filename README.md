@@ -137,6 +137,42 @@ NCERT PDFs alone run into hundreds of MB). Instead:
 5. Chapters now open from the bubble's **Books** menu, rendered fully
    offline via Android's built-in PDF renderer (no internet needed at
    lesson time).
+6. **Import is a one-time snapshot, not a live sync.** If you add a new
+   chapter PDF to the folder later, re-run step 3 (re-select the same
+   folder) to pick it up — the app doesn't watch the folder for changes.
+   Chapter numbers come from each file's own name (`ch5.pdf` → "Chapter 5"),
+   not a hardcoded sequence, so re-importing after adding a missing chapter
+   slots it into the right position automatically.
+
+## PDF viewer extras
+
+**Minimize** — the `−` button in the PDF header hides the window without
+closing the chapter; the renderer, page cache, and your exact scroll/zoom
+position all stay alive in memory. A small round icon docks near the bubble
+(wherever the bubble was *at the moment you minimized* — it won't follow if
+you drag the bubble afterward) — tap it to bring the exact same page and
+zoom level straight back.
+
+**Word meaning lookup** — the magnifying-glass button in the header lets you
+drag a rectangle over a word/phrase on the page (shown as a green highlight).
+This requires internet and a one-time setup, since our PDF pages are plain
+rendered images with no text layer to select from directly:
+1. Sign up for a free API key at **ocr.space/ocrapi** — no Google account,
+   no card, just an email address, and it takes under a minute.
+2. Paste it into the Geneo Toolbox app under **Step 5 · Word meaning
+   lookup** and tap Save.
+3. In any chapter, tap the lookup icon, drag over a word, and release.
+   The app screenshots that region, sends it to OCR.space to read the text,
+   then looks up the definition via the free dictionaryapi.dev (no key
+   needed) and shows it in a card — word, phonetic spelling, part of
+   speech, numbered definitions, and example sentences. No audio/pronunciation
+   button by design.
+
+Two honest limitations worth knowing: this feature needs a live internet
+connection (unlike everything else in the app, which works fully offline),
+and OCR accuracy depends on how clean the selected image region is — a
+tightly-cropped single word works far better than a whole sloppily-dragged
+sentence.
 
 ## Project structure
 ```

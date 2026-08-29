@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/meaningOuterRoot"
+    android:layout_width="330dp"
+    android:layout_height="420dp">
+
+    <LinearLayout
+        android:id="@+id/meaningRoot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_tool_card"
+        android:elevation="16dp"
+        android:orientation="vertical">
+
+        <!-- Header / drag bar -->
+        <LinearLayout
+            android:id="@+id/meaningHeader"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_tool_header"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_select_text" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Word Meaning"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnCloseMeaning"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Close"
+                android:padding="7dp"
+                android:src="@drawable/ic_close" />
+        </LinearLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/meaningContentContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp" />
+        </ScrollView>
+    </LinearLayout>
+
+</FrameLayout>

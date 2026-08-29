@@ -42,6 +42,26 @@
                 android:textStyle="bold" />
 
             <ImageButton
+                android:id="@+id/btnSelectText"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Select word for meaning"
+                android:padding="8dp"
+                android:src="@drawable/ic_select_text" />
+
+            <ImageButton
+                android:id="@+id/btnMinimizePdf"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Minimize"
+                android:padding="9dp"
+                android:src="@drawable/ic_minimize" />
+
+            <ImageButton
                 android:id="@+id/btnClosePdf"
                 android:layout_width="34dp"
                 android:layout_height="34dp"
@@ -73,6 +93,12 @@
                 android:text="Loading…"
                 android:textColor="@color/geneo_text_secondary"
                 android:textSize="13sp"
+                android:visibility="gone" />
+
+            <com.geneo.smartboard.overlay.SelectionOverlayView
+                android:id="@+id/pdfSelectionOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
                 android:visibility="gone" />
         </FrameLayout>
 
