@@ -161,12 +161,15 @@ rendered images with no text layer to select from directly:
    no card, just an email address, and it takes under a minute.
 2. Paste it into the Geneo Toolbox app under **Step 5 · Word meaning
    lookup** and tap Save.
-3. In any chapter, tap the lookup icon, drag over a word, and release.
-   The app screenshots that region, sends it to OCR.space to read the text,
-   then looks up the definition via the free dictionaryapi.dev (no key
-   needed) and shows it in a card — word, phonetic spelling, part of
-   speech, numbered definitions, and example sentences. No audio/pronunciation
-   button by design.
+3. In any chapter, tap the lookup icon, drag over a word (or a whole
+   phrase — it picks the most meaningful word out of it, skipping short
+   words like "the"/"is"/"a"), and release. The app screenshots that
+   region, sends it to OCR.space to read the text, looks up the definition
+   via the free dictionaryapi.dev, and adds a Hindi translation of the word
+   and each definition via MyMemory (also free, no key, no Google account)
+   — shown as a card with word, phonetic spelling, translation, part of
+   speech, numbered definitions with their own translations, and example
+   sentences. No audio/pronunciation button by design.
 
 Two honest limitations worth knowing: this feature needs a live internet
 connection (unlike everything else in the app, which works fully offline),

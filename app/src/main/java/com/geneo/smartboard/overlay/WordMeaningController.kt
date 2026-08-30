@@ -9,9 +9,10 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 
 /**
- * Populates the word-meaning popup's content — word, phonetic, and each
- * definition grouped by part of speech with its example sentence, styled
- * like a simple dictionary card. No audio/pronunciation button by design.
+ * Populates the word-meaning popup's content — word, phonetic, Hindi
+ * translation, and each definition (with its own Hindi translation and
+ * example sentence) grouped by part of speech. No audio/pronunciation
+ * button by design.
  */
 class WordMeaningController(root: View) {
 
@@ -35,6 +36,16 @@ class WordMeaningController(root: View) {
         result.phonetic?.let {
             addText(it, 14f, color(R.color.geneo_text_secondary), topMargin = 2)
         }
+        result.wordHindi?.let {
+            addText(it, 15f, color(R.color.geneo_accent), topMargin = 2)
+        }
+
+        // If a whole phrase/sentence was selected, show what was actually
+        // read so it's clear which word out of it is being defined below.
+        val wordCount = result.recognizedText.trim().split(Regex("\\s+")).size
+        if (wordCount > 1) {
+            addText("Selected: \u201C${result.recognizedText.trim()}\u201D", 12f, color(R.color.geneo_text_secondary), italic = true, topMargin = 8)
+        }
 
         val grouped = LinkedHashMap<String, MutableList<WordLookupHelper.Definition>>()
         for (def in result.definitions) {
@@ -46,6 +57,9 @@ class WordMeaningController(root: View) {
             addText(partOfSpeech, 13f, color(R.color.geneo_accent), italic = true, topMargin = 18)
             for (def in defs) {
                 addText("$number. ${def.meaning}", 15f, color(R.color.geneo_text_primary), topMargin = 10)
+                def.meaningHindi?.let {
+                    addText(it, 13.5f, color(R.color.geneo_text_secondary), topMargin = 2)
+                }
                 def.example?.let { addExampleBubble(it) }
                 number++
             }
