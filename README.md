@@ -153,49 +153,81 @@ position all stay alive in memory. A small round icon docks near the bubble
 you drag the bubble afterward) — tap it to bring the exact same page and
 zoom level straight back.
 
-**Word meaning lookup** — the magnifying-glass button in the header lets you
-drag a rectangle over a word/phrase on the page (shown as a green highlight).
-This requires internet and a one-time setup, since our PDF pages are plain
-rendered images with no text layer to select from directly:
-1. Sign up for a free API key at **ocr.space/ocrapi** — no Google account,
-   no card, just an email address, and it takes under a minute.
-2. Paste it into the Geneo Toolbox app under **Step 5 · Word meaning
-   lookup** and tap Save.
-3. In any chapter, tap the lookup icon, drag over a word (or a whole
-   phrase — it picks the most meaningful word out of it, skipping short
-   words like "the"/"is"/"a"), and release. The app screenshots that
-   region, sends it to OCR.space to read the text, looks up the definition
-   via the free dictionaryapi.dev, and adds a Hindi translation of the word
-   and each definition via MyMemory (also free, no key, no Google account)
-   — shown as a card with word, phonetic spelling, translation, part of
-   speech, numbered definitions with their own translations, and example
-   sentences. No audio/pronunciation button by design.
+**Maximize** — the expand-arrows button grows the window to fill most of
+the screen, but deliberately **not** edge-to-edge — a fixed margin (32dp) is
+kept on every side, so it still reads as a floating card rather than a
+full-screen takeover. Tap again to snap back to the exact size/position it
+had before.
 
-Two honest limitations worth knowing: this feature needs a live internet
-connection (unlike everything else in the app, which works fully offline),
-and OCR accuracy depends on how clean the selected image region is — a
-tightly-cropped single word works far better than a whole sloppily-dragged
-sentence.
+**Word meaning lookup** — the magnifying-glass button in the header lets you
+drag a rectangle over a word/phrase on the page (shown as a green
+highlight), and shows a definition card: word, part of speech, numbered
+definitions, example sentences, and a Hindi translation of the word and its
+first definition. No audio/pronunciation button by design.
+
+This works **fully offline for ~108,000 common English words** — no setup,
+no internet needed. That's powered by a real dictionary bundled directly in
+the app (built from the openly-licensed wordset-dictionary project, itself
+derived from Princeton WordNet, ~16.5MB as a SQLite database in `assets/`),
+looked up with an instant indexed query — no network round trip at all for
+the large majority of words a Class 10 NCERT textbook will ever throw at it.
+
+Two things still need internet, and both need a one-time free signup:
+1. **Reading the selected image** (OCR) — always required, since there's no
+   way to know what word you dragged over without it. Sign up for a free
+   key at **ocr.space/ocrapi** (no Google account, no card, just an email,
+   under a minute) and paste it into the app under **Step 5**.
+2. **Rare/technical words** the bundled offline dictionary doesn't have fall
+   back to Merriam-Webster's free API (optional — **Step 6** — up to 1000
+   lookups/day). Skip this and offline-only words just won't have an
+   online fallback; everything else about the feature still works.
+
+Hindi translation (via MyMemory, free, keyless, no Google account) is never
+allowed to slow down or block the English definition — it's fetched in the
+background and the card updates a moment later if/when it arrives, so you
+see the definition itself as fast as OCR alone allows.
+
+Two honest limitations worth knowing: OCR itself always needs a live
+connection (nothing can avoid that part), and OCR accuracy depends on how
+clean the selected image region is — a tightly-cropped single word works
+far better than a whole sloppily-dragged sentence.
 
 ## Project structure
 ```
 app/src/main/java/com/geneo/smartboard/overlay/
- ├─ MainActivity.kt          – one-time setup screen (permission + enable)
+ ├─ MainActivity.kt          – one-time setup screen (permissions, API keys)
  ├─ BookLibraryActivity.kt   – one-time NCERT folder import + library view
  ├─ BootReceiver.kt          – restarts the overlay after every reboot
+ ├─ OverlayWatchdogWorker.kt – periodic self-healing restart (WorkManager)
  ├─ OverlayService.kt        – foreground service: bubble, animated menu,
- │                             all tool windows, drag/resize/snap logic
+ │                             all tool windows, drag/resize/maximize/
+ │                             minimize/z-order logic
  ├─ DragHelper.kt            – shared tap-vs-drag touch handling
  ├─ StopwatchController.kt   – stopwatch tick/lap logic
  ├─ TimerController.kt       – countdown timer logic + vibration on finish
  ├─ CalculatorController.kt  – 4-function calculator logic
  ├─ BookLibrary.kt           – subject/chapter data model + persistence
  ├─ BookImporter.kt          – scans a picked folder for NCERT chapter PDFs
- ├─ PdfChapterController.kt  – offline PDF page rendering (PdfRenderer)
+ ├─ PdfChapterController.kt  – owns the PDF file/renderer lifecycle + the
+ │                             select-a-word gesture
+ ├─ PdfContinuousView.kt     – zoomable/scrollable/flingable page rendering
+ ├─ SelectionOverlayView.kt  – drag-to-select rectangle over a PDF page
+ ├─ WordLookupHelper.kt      – OCR + offline/online dictionary + translation
+ ├─ OfflineDictionary.kt     – bundled ~108k-word SQLite dictionary lookup
+ ├─ WordMeaningController.kt – builds the word-meaning popup's content
  ├─ PenCanvasView.kt         – transparent freehand drawing/eraser canvas
  ├─ PenToolbarController.kt  – pen toolbar (color/type/size/eraser/drag)
- └─ Prefs.kt                 – remembers "setup completed" for auto-boot-start
+ └─ Prefs.kt                 – settings + "setup completed" for auto-boot-start
+
+app/src/main/assets/
+ └─ dictionary.db            – bundled offline dictionary (~16.5MB, CC BY-SA 4.0)
 ```
+
+## Project size note
+The bundled offline dictionary adds ~16.5MB to the APK — a one-time,
+worthwhile tradeoff for genuine offline word lookup rather than a network
+dependency for every single word. Everything else in this project remains
+deliberately lightweight (no other bundled datasets, no heavy libraries).
 
 ## Get an APK automatically from GitHub (no Android Studio needed)
 

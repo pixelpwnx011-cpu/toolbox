@@ -22,6 +22,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvOcrKeyStatus: TextView
     private lateinit var etOcrApiKey: EditText
+    private lateinit var tvDictionaryKeyStatus: TextView
+    private lateinit var etDictionaryApiKey: EditText
     private lateinit var btnGrantOverlay: Button
     private lateinit var btnToggleService: Button
     private lateinit var btnBatteryOptimization: Button
@@ -38,6 +40,8 @@ class MainActivity : AppCompatActivity() {
         tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
         tvOcrKeyStatus = findViewById(R.id.tvOcrKeyStatus)
         etOcrApiKey = findViewById(R.id.etOcrApiKey)
+        tvDictionaryKeyStatus = findViewById(R.id.tvDictionaryKeyStatus)
+        etDictionaryApiKey = findViewById(R.id.etDictionaryApiKey)
         btnGrantOverlay = findViewById(R.id.btnGrantOverlay)
         btnToggleService = findViewById(R.id.btnToggleService)
         btnBatteryOptimization = findViewById(R.id.btnBatteryOptimization)
@@ -49,8 +53,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, BookLibraryActivity::class.java))
         }
         findViewById<Button>(R.id.btnSaveOcrKey).setOnClickListener { saveOcrKey() }
+        findViewById<Button>(R.id.btnSaveDictionaryKey).setOnClickListener { saveDictionaryKey() }
 
         Prefs.getOcrApiKey(this)?.let { etOcrApiKey.setText(it) }
+        Prefs.getDictionaryApiKey(this)?.let { etDictionaryApiKey.setText(it) }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -163,6 +169,17 @@ class MainActivity : AppCompatActivity() {
         refreshStatus()
     }
 
+    private fun saveDictionaryKey() {
+        val key = etDictionaryApiKey.text.toString().trim()
+        if (key.isEmpty()) {
+            Toast.makeText(this, "Paste a key first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Prefs.setDictionaryApiKey(this, key)
+        Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+        refreshStatus()
+    }
+
     private fun hasOverlayPermission(): Boolean {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
     }
@@ -206,6 +223,14 @@ class MainActivity : AppCompatActivity() {
         } else {
             tvOcrKeyStatus.text = "Status: Not set"
             tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_warning))
+        }
+
+        if (Prefs.getDictionaryApiKey(this) != null) {
+            tvDictionaryKeyStatus.text = "Status: Key saved — rare words also covered"
+            tvDictionaryKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_success))
+        } else {
+            tvDictionaryKeyStatus.text = "Status: Not set (offline dictionary still works)"
+            tvDictionaryKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_text_secondary))
         }
     }
 }

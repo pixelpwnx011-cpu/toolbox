@@ -271,6 +271,65 @@
                 android:text="Save Key" />
         </LinearLayout>
 
+        <!-- Step 6 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_tool_card"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Step 6 (optional) · Rare-word fallback dictionary"
+                android:textColor="@color/geneo_text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Word lookup already works fully offline for ~108,000 common words using a dictionary bundled right in the app — no setup needed. This key only matters as a fallback for rare/technical words the bundled dictionary doesn't have, via Merriam-Webster's free &quot;Collegiate Dictionary&quot; API — register at dictionaryapi.com/register/index (free, up to 1000 lookups/day, needs internet)."
+                android:textColor="@color/geneo_text_secondary"
+                android:textSize="13sp" />
+
+            <EditText
+                android:id="@+id/etDictionaryApiKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:autofillHints="password"
+                android:background="@drawable/bg_calc_digit"
+                android:hint="Paste your Merriam-Webster API key"
+                android:inputType="textVisiblePassword"
+                android:padding="12dp"
+                android:textColor="@color/geneo_text_primary"
+                android:textColorHint="@color/geneo_text_secondary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvDictionaryKeyStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Status: Not set"
+                android:textColor="@color/geneo_warning"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnSaveDictionaryKey"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:backgroundTint="@color/geneo_primary"
+                android:text="Save Key" />
+        </LinearLayout>
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

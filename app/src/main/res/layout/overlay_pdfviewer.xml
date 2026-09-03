@@ -52,6 +52,16 @@
                 android:src="@drawable/ic_select_text" />
 
             <ImageButton
+                android:id="@+id/btnMaximizePdf"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_round_button"
+                android:contentDescription="Maximize"
+                android:padding="8dp"
+                android:src="@drawable/ic_maximize" />
+
+            <ImageButton
                 android:id="@+id/btnMinimizePdf"
                 android:layout_width="34dp"
                 android:layout_height="34dp"

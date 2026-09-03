@@ -11,6 +11,7 @@ object Prefs {
     private const val PREFS_NAME = "geneo_overlay_prefs"
     private const val KEY_OVERLAY_ENABLED = "overlay_enabled"
     private const val KEY_OCR_API_KEY = "ocr_api_key"
+    private const val KEY_DICTIONARY_API_KEY = "dictionary_api_key"
 
     // Pre-configured so word lookup works without the user having to paste a
     // key in first. NOTE: if this project's repo is public on GitHub, this
@@ -40,6 +41,19 @@ object Prefs {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_OCR_API_KEY, key.trim())
+            .apply()
+    }
+
+    fun getDictionaryApiKey(context: Context): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DICTIONARY_API_KEY, null)
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    fun setDictionaryApiKey(context: Context, key: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_DICTIONARY_API_KEY, key.trim())
             .apply()
     }
 }

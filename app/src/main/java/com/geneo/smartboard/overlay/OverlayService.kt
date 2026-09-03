@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -41,6 +42,9 @@ class OverlayService : Service() {
         private const val BROWSER_MIN_HEIGHT_DP = 280
         private const val PDF_MIN_WIDTH_DP = 260
         private const val PDF_MIN_HEIGHT_DP = 320
+        // How much screen edge stays visible when the PDF viewer is maximized -
+        // deliberately not edge-to-edge, so it still reads as a floating card.
+        private const val PDF_MAXIMIZE_MARGIN_DP = 32
 
         // How often the bubble/menu force themselves back to the very top of
         // the overlay stack, in case some other app's own overlay window got
@@ -106,6 +110,8 @@ class OverlayService : Service() {
     private var pdfSavedWidthPx: Int? = null
     private var pdfSavedHeightPx: Int? = null
     private var pdfMinimizedIconView: View? = null
+    private var pdfMaximized = false
+    private var pdfPreMaximizeBounds: IntArray? = null // [width, height, x, y]
 
     // Word meaning lookup popup
     private var meaningView: View? = null
@@ -764,6 +770,8 @@ class OverlayService : Service() {
 
     private fun openPdfViewer(title: String, uriString: String) {
         closePdfViewer() // only one chapter open at a time keeps this lightweight
+        pdfMaximized = false
+        pdfPreMaximizeBounds = null
         val view = inflater.inflate(R.layout.overlay_pdfviewer, null)
 
         val (screenW, screenH) = screenSize()
@@ -789,6 +797,9 @@ class OverlayService : Service() {
         }
         view.findViewById<View>(R.id.btnMinimizePdf).setOnClickListener {
             safeRun("minimize pdf") { minimizePdfViewer() }
+        }
+        view.findViewById<View>(R.id.btnMaximizePdf).setOnClickListener {
+            safeRun("maximize pdf") { toggleMaximizePdf() }
         }
 
         val uri = runCatching { android.net.Uri.parse(uriString) }.getOrNull()
@@ -843,6 +854,45 @@ class OverlayService : Service() {
         val view = pdfView ?: return
         runCatching { windowManager.removeView(view) }
         showPdfMinimizedIcon()
+    }
+
+    /**
+     * Expands the PDF window to fill most of the screen, but deliberately
+     * NOT edge-to-edge — a fixed margin is kept on every side, so the window
+     * stays visually distinct as a floating card rather than looking like a
+     * full-screen takeover. Tapping again restores the exact size/position
+     * it had before maximizing.
+     */
+    private fun toggleMaximizePdf() {
+        val view = pdfView ?: return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        val btn = view.findViewById<ImageButton>(R.id.btnMaximizePdf)
+
+        if (pdfMaximized) {
+            val prev = pdfPreMaximizeBounds
+            if (prev != null) {
+                params.width = prev[0]
+                params.height = prev[1]
+                params.x = prev[2]
+                params.y = prev[3]
+            }
+            pdfMaximized = false
+            btn?.setBackgroundResource(R.drawable.bg_round_button)
+        } else {
+            pdfPreMaximizeBounds = intArrayOf(params.width, params.height, params.x, params.y)
+            val (screenW, screenH) = screenSize()
+            val margin = dp(PDF_MAXIMIZE_MARGIN_DP)
+            params.width = (screenW - margin * 2).coerceAtLeast(dp(PDF_MIN_WIDTH_DP))
+            params.height = (screenH - margin * 2).coerceAtLeast(dp(PDF_MIN_HEIGHT_DP))
+            params.x = margin
+            params.y = margin
+            pdfMaximized = true
+            btn?.setBackgroundResource(R.drawable.bg_calc_equals)
+        }
+
+        runCatching { windowManager.updateViewLayout(view, params) }
+        pdfSavedWidthPx = params.width
+        pdfSavedHeightPx = params.height
     }
 
     private fun showPdfMinimizedIcon() {
@@ -942,17 +992,17 @@ class OverlayService : Service() {
         meaningController = controller
         meaningView = view
 
-        val apiKey = Prefs.getOcrApiKey(this)
-        if (apiKey == null) {
+        val ocrApiKey = Prefs.getOcrApiKey(this)
+        val dictionaryApiKey = Prefs.getDictionaryApiKey(this)
+        if (ocrApiKey == null) {
             controller.showError(
-                "No OCR.space API key set yet. Open the Geneo Toolbox app and add a free key under \"Word meaning lookup\"."
+                "Word lookup needs an OCR.space key set first. Open the Geneo Toolbox app and add it under Step 5."
             )
             bitmap.recycle()
             return
         }
 
-        WordLookupHelper.lookup(bitmap, apiKey) { result, error ->
-            bitmap.recycle()
+        WordLookupHelper.lookup(this, bitmap, ocrApiKey, dictionaryApiKey) { result, error ->
             // The popup may have been closed while the lookup was in flight.
             if (meaningView !== view) return@lookup
             safeRun("show meaning result") {
