@@ -16,11 +16,18 @@ import java.net.URLEncoder
  * Turns a screenshot of a selected region into a word definition (plus a
  * Hindi translation).
  *
+ * Fully offline for the common case: reading the image (Tesseract, see
+ * OfflineOcr) and looking up the definition (bundled ~108,000-word
+ * dictionary, see OfflineDictionary) both work with zero network calls and
+ * no API key. Online services (OCR.space, Merriam-Webster) are purely
+ * optional fallbacks for cases the offline path can't handle. Only Hindi
+ * translation has no offline equivalent and always needs internet.
+ *
  * Speed/reliability design (this used to be very slow and time out a lot):
- * 1. The DEFINITION step checks the bundled offline dictionary (~108,000
- *    words, instant, no network) first — see OfflineDictionary. Only words
- *    missing from that dataset fall back to Merriam-Webster online, and
- *    only a handful of candidates are tried (not every word OCR read).
+ * 1. OCR and the DEFINITION step both check their offline path first (see
+ *    above) before ever touching the network. Only words missing from the
+ *    bundled dictionary fall back to Merriam-Webster online, and only a
+ *    handful of candidates are tried (not every word OCR read).
  * 2. The callback fires TWICE on success: immediately once OCR + the
  *    definition are ready (no waiting on translation), then again if/when
  *    the Hindi translation arrives shortly after. The English definition is
@@ -69,7 +76,7 @@ object WordLookupHelper {
     fun lookup(
         context: Context,
         bitmap: Bitmap,
-        ocrApiKey: String,
+        ocrApiKey: String?,
         dictionaryApiKey: String?,
         callback: (LookupResult?, String?) -> Unit
     ) {
@@ -79,7 +86,12 @@ object WordLookupHelper {
         Thread {
             val outcome = runCatching {
                 val recognizedText = try {
-                    ocrImage(bitmap, ocrApiKey) ?: throw IllegalStateException("Couldn't read any text in that selection")
+                    // Offline first (Tesseract, no network, no key needed) —
+                    // only fall back to OCR.space if that fails/finds nothing
+                    // AND a key is configured.
+                    OfflineOcr.recognize(appContext, bitmap)
+                        ?: ocrApiKey?.let { key -> ocrImage(bitmap, key) }
+                        ?: throw IllegalStateException("Couldn't read any text in that selection")
                 } finally {
                     bitmap.recycle()
                 }

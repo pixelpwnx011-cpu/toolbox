@@ -101,8 +101,8 @@ This wasn't a tablet-only bug — the fix removes the actual root cause, so it
 applies (and was needed) on any device, tablet or board alike.
 
 ## Using it
-- **Single tap** the bubble → menu of 5 tools pops open with a bounce
-  animation: Stopwatch, Timer, Calculator, Books (NCERT), Pen.
+- **Single tap** the bubble → menu of 4 tools pops open with a bounce
+  animation: Stopwatch, Timer, Calculator, Books (NCERT).
 - **Tap the bubble again** → menu closes with a matching animation.
 - **Drag** the bubble anywhere; release and it snaps to the nearest screen
   edge.
@@ -113,14 +113,6 @@ applies (and was needed) on any device, tablet or board alike.
 - Tap **Books** → browse Subject → Chapter → opens that chapter's PDF in a
   resizable viewer with page-by-page navigation (see "NCERT books" below —
   needs a one-time import first).
-- Tap **Pen** → draws directly on top of whatever is currently on screen
-  (any app, or the PDF viewer above) — the canvas itself is fully
-  transparent, only your strokes are visible. A small draggable toolbar
-  (drag its grip icon to move it) gives you 3 pen presets (Pen/Marker/
-  Highlighter), 5 colors, size +/- (separate size for pen vs eraser),
-  eraser, clear-all, and close. While Pen is open it captures all touches
-  on screen (so it can be drawn on everywhere) — close it to interact with
-  apps underneath again.
 
 ## NCERT Class 10 books
 Chapters aren't bundled into the app (that would make the APK enormous —
@@ -165,32 +157,42 @@ highlight), and shows a definition card: word, part of speech, numbered
 definitions, example sentences, and a Hindi translation of the word and its
 first definition. No audio/pronunciation button by design.
 
-This works **fully offline for ~108,000 common English words** — no setup,
-no internet needed. That's powered by a real dictionary bundled directly in
-the app (built from the openly-licensed wordset-dictionary project, itself
-derived from Princeton WordNet, ~16.5MB as a SQLite database in `assets/`),
-looked up with an instant indexed query — no network round trip at all for
-the large majority of words a Class 10 NCERT textbook will ever throw at it.
+**Both steps of this work fully offline by default — no setup, no internet
+needed, no Google account or Play Services involved anywhere:**
+1. **Reading the selected image** (OCR) is done on-device via
+   [Tesseract](https://github.com/tesseract-ocr/tesseract) (the
+   `tesseract4android` wrapper), using a bundled English model
+   (`assets/tessdata/eng.traineddata`, ~4MB). It works especially well here
+   since our source images are clean, computer-rendered PDF text rather
+   than a photo — close to Tesseract's ideal input.
+2. **Looking up the definition** uses a real dictionary bundled directly in
+   the app (~108,000 words / ~163,000 definitions, built from the
+   openly-licensed wordset-dictionary project derived from Princeton
+   WordNet, ~16.5MB as a SQLite database in `assets/`) — an instant indexed
+   query, no network round trip, for the large majority of words a Class 10
+   NCERT textbook will ever throw at it.
 
-Two things still need internet, and both need a one-time free signup:
-1. **Reading the selected image** (OCR) — always required, since there's no
-   way to know what word you dragged over without it. Sign up for a free
-   key at **ocr.space/ocrapi** (no Google account, no card, just an email,
-   under a minute) and paste it into the app under **Step 5**.
-2. **Rare/technical words** the bundled offline dictionary doesn't have fall
-   back to Merriam-Webster's free API (optional — **Step 6** — up to 1000
-   lookups/day). Skip this and offline-only words just won't have an
-   online fallback; everything else about the feature still works.
+Two things are optional **online fallbacks** for edge cases, each needing
+its own one-time free signup:
+- **OCR.space** (Step 5) — only used if the offline reader can't make out a
+  selection. Sign up at **ocr.space/ocrapi** (no Google account, no card).
+- **Merriam-Webster** (Step 6) — only used for rare/technical words the
+  bundled offline dictionary doesn't have. Register at
+  dictionaryapi.com/register/index (free, up to 1000 lookups/day).
 
-Hindi translation (via MyMemory, free, keyless, no Google account) is never
-allowed to slow down or block the English definition — it's fetched in the
-background and the card updates a moment later if/when it arrives, so you
-see the definition itself as fast as OCR alone allows.
+Skip both and the feature still works for the vast majority of real-world
+use — they only matter for edge cases the offline path can't cover.
 
-Two honest limitations worth knowing: OCR itself always needs a live
-connection (nothing can avoid that part), and OCR accuracy depends on how
-clean the selected image region is — a tightly-cropped single word works
-far better than a whole sloppily-dragged sentence.
+**Hindi translation is the one piece that has no offline equivalent** — it
+always needs internet (via MyMemory, free, keyless, no Google account). It's
+never allowed to slow down or block the English definition though: it's
+fetched in the background and the card updates a moment later if/when it
+arrives, so you see the definition itself immediately regardless of
+connectivity.
+
+One honest limitation worth knowing: OCR accuracy (offline or online) still
+depends on how clean the selected image region is — a tightly-cropped
+single word works far better than a whole sloppily-dragged sentence.
 
 ## Project structure
 ```
@@ -212,22 +214,23 @@ app/src/main/java/com/geneo/smartboard/overlay/
  │                             select-a-word gesture
  ├─ PdfContinuousView.kt     – zoomable/scrollable/flingable page rendering
  ├─ SelectionOverlayView.kt  – drag-to-select rectangle over a PDF page
- ├─ WordLookupHelper.kt      – OCR + offline/online dictionary + translation
+ ├─ WordLookupHelper.kt      – offline-first OCR + dictionary + translation
+ ├─ OfflineOcr.kt            – bundled offline OCR (Tesseract, no network)
  ├─ OfflineDictionary.kt     – bundled ~108k-word SQLite dictionary lookup
  ├─ WordMeaningController.kt – builds the word-meaning popup's content
- ├─ PenCanvasView.kt         – transparent freehand drawing/eraser canvas
- ├─ PenToolbarController.kt  – pen toolbar (color/type/size/eraser/drag)
  └─ Prefs.kt                 – settings + "setup completed" for auto-boot-start
 
 app/src/main/assets/
- └─ dictionary.db            – bundled offline dictionary (~16.5MB, CC BY-SA 4.0)
+ ├─ dictionary.db            – bundled offline dictionary (~16.5MB, CC BY-SA 4.0)
+ └─ tessdata/eng.traineddata – bundled offline OCR model (~4MB, Apache 2.0)
 ```
 
 ## Project size note
-The bundled offline dictionary adds ~16.5MB to the APK — a one-time,
-worthwhile tradeoff for genuine offline word lookup rather than a network
-dependency for every single word. Everything else in this project remains
-deliberately lightweight (no other bundled datasets, no heavy libraries).
+The bundled offline dictionary and OCR model add ~20.5MB total to the APK —
+a one-time, worthwhile tradeoff for genuine offline word lookup (both
+reading the selection AND defining it) rather than a network dependency for
+every single word. Everything else in this project remains deliberately
+lightweight (no other bundled datasets, no heavy libraries).
 
 ## Get an APK automatically from GitHub (no Android Studio needed)
 

@@ -218,11 +218,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (Prefs.getOcrApiKey(this) != null) {
-            tvOcrKeyStatus.text = "Status: Key saved — word lookup is enabled"
+            tvOcrKeyStatus.text = "Status: Key saved — online fallback ready"
             tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_success))
         } else {
-            tvOcrKeyStatus.text = "Status: Not set"
-            tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_warning))
+            tvOcrKeyStatus.text = "Status: Not set (offline reading still works)"
+            tvOcrKeyStatus.setTextColor(ContextCompat.getColor(this, R.color.geneo_text_secondary))
         }
 
         if (Prefs.getDictionaryApiKey(this) != null) {

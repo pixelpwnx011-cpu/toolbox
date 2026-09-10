@@ -9,9 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -46,11 +44,6 @@ class OverlayService : Service() {
         // deliberately not edge-to-edge, so it still reads as a floating card.
         private const val PDF_MAXIMIZE_MARGIN_DP = 32
 
-        // How often the bubble/menu force themselves back to the very top of
-        // the overlay stack, in case some other app's own overlay window got
-        // added after ours and is now covering it.
-        private const val BRING_TO_FRONT_INTERVAL_MS = 10 * 60 * 1000L
-
         @Volatile
         var isRunning: Boolean = false
             private set
@@ -71,13 +64,6 @@ class OverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
     private lateinit var inflater: LayoutInflater
-    private val periodicHandler = Handler(Looper.getMainLooper())
-    private val bringToFrontRunnable = object : Runnable {
-        override fun run() {
-            safeRun("periodic bring-to-front") { reassertOverlayOrder() }
-            periodicHandler.postDelayed(this, BRING_TO_FRONT_INTERVAL_MS)
-        }
-    }
     private var touchSlop = 16
 
     // Bubble
@@ -116,14 +102,6 @@ class OverlayService : Service() {
     // Word meaning lookup popup
     private var meaningView: View? = null
     private var meaningController: WordMeaningController? = null
-
-    // Pen / annotation overlay
-    private var penView: View? = null
-    // Remembers each tool's last-used size so reopening the pen tool restores
-    // exactly what was set before, instead of resetting to defaults.
-    private var penSavedPenSizeDp: Int? = null
-    private var penSavedHighlighterSizeDp: Int? = null
-    private var penSavedEraserSizeDp: Int? = null
     // Remembers the last size the user dragged the calculator to, so
     // reopening it after closing restores that size instead of resetting.
     private var calcSavedWidthPx: Int? = null
@@ -145,7 +123,6 @@ class OverlayService : Service() {
         createNotificationChannel()
         addBubble()
         isRunning = true
-        periodicHandler.postDelayed(bringToFrontRunnable, BRING_TO_FRONT_INTERVAL_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -156,7 +133,6 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        periodicHandler.removeCallbacks(bringToFrontRunnable)
         removeMenu(animate = false)
         closeStopwatch()
         closeTimer()
@@ -164,7 +140,7 @@ class OverlayService : Service() {
         closeBookBrowser()
         closePdfViewer()
         closeMeaningLookup()
-        closePen()
+        OfflineOcr.release()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null
     }
@@ -325,9 +301,8 @@ class OverlayService : Service() {
         params.x = bParams.x
         params.y = bParams.y
 
-        // Prime the 5 rows as invisible/scaled-down; they'll animate in once positioned.
+        // Prime the 4 rows as invisible/scaled-down; they'll animate in once positioned.
         val items = listOf(
-            view.findViewById<View>(R.id.itemPen),
             view.findViewById<View>(R.id.itemBooks),
             view.findViewById<View>(R.id.itemCalculator),
             view.findViewById<View>(R.id.itemTimer),
@@ -340,9 +315,6 @@ class OverlayService : Service() {
             it.translationY = dp(16).toFloat()
         }
 
-        view.findViewById<View>(R.id.btnPen).setOnClickListener {
-            safeRun("open pen") { onToolChosen { openPen() } }
-        }
         view.findViewById<View>(R.id.btnBooks).setOnClickListener {
             safeRun("open books") { onToolChosen { openBookBrowser() } }
         }
@@ -428,8 +400,7 @@ class OverlayService : Service() {
             view.findViewById<View>(R.id.itemStopwatch),
             view.findViewById<View>(R.id.itemTimer),
             view.findViewById<View>(R.id.itemCalculator),
-            view.findViewById<View>(R.id.itemBooks),
-            view.findViewById<View>(R.id.itemPen)
+            view.findViewById<View>(R.id.itemBooks)
         )
         items.forEachIndexed { index, item ->
             item.animate()
@@ -994,13 +965,6 @@ class OverlayService : Service() {
 
         val ocrApiKey = Prefs.getOcrApiKey(this)
         val dictionaryApiKey = Prefs.getDictionaryApiKey(this)
-        if (ocrApiKey == null) {
-            controller.showError(
-                "Word lookup needs an OCR.space key set first. Open the Geneo Toolbox app and add it under Step 5."
-            )
-            bitmap.recycle()
-            return
-        }
 
         WordLookupHelper.lookup(this, bitmap, ocrApiKey, dictionaryApiKey) { result, error ->
             // The popup may have been closed while the lookup was in flight.
@@ -1015,61 +979,6 @@ class OverlayService : Service() {
         val view = meaningView ?: return
         meaningView = null
         meaningController = null
-        runCatching { windowManager.removeView(view) }
-    }
-
-    // ---------------------------------------------------------------------
-    // Pen (full-screen annotation, works over anything on screen)
-    // ---------------------------------------------------------------------
-
-    private fun openPen() {
-        if (penView != null) return
-        val view = inflater.inflate(R.layout.overlay_pen, null)
-
-        val params = WindowManager.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.TOP or Gravity.START
-        params.x = 0
-        params.y = 0
-
-        view.alpha = 0f
-        val added = runCatching { windowManager.addView(view, params) }.isSuccess
-        if (!added) {
-            android.util.Log.w("OverlayService", "Failed to add pen overlay window")
-            return
-        }
-
-        val canvas = view.findViewById<PenCanvasView>(R.id.penCanvas)
-        val savedPen = penSavedPenSizeDp
-        val savedHi = penSavedHighlighterSizeDp
-        val savedEraser = penSavedEraserSizeDp
-        if (savedPen != null && savedHi != null && savedEraser != null) {
-            runCatching { canvas.restoreSizes(savedPen, savedHi, savedEraser) }
-        }
-        runCatching { PenToolbarController(view, canvas) }
-
-        view.findViewById<View>(R.id.btnClosePen).setOnClickListener {
-            safeRun("close pen") { closePen() }
-        }
-
-        view.animate().alpha(1f).setDuration(180).start()
-        penView = view
-    }
-
-    private fun closePen() {
-        val view = penView ?: return
-        runCatching {
-            val canvas = view.findViewById<PenCanvasView>(R.id.penCanvas)
-            penSavedPenSizeDp = canvas.penSizeDp()
-            penSavedHighlighterSizeDp = canvas.highlighterSizeDp()
-            penSavedEraserSizeDp = canvas.eraserSizeDp()
-        }
-        penView = null
         runCatching { windowManager.removeView(view) }
     }
 

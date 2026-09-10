@@ -224,7 +224,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Step 5 (optional) · Word meaning lookup"
+                android:text="Step 5 (optional) · Word lookup rare-selection fallback"
                 android:textColor="@color/geneo_text_primary"
                 android:textSize="16sp"
                 android:textStyle="bold" />
@@ -233,7 +233,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Lets you select a word in the PDF viewer and see its meaning. Needs a free OCR.space API key (no Google account, no card — sign up at ocr.space/ocrapi, takes under a minute) and an internet connection."
+                android:text="Word meaning lookup (drag-select a word in the PDF viewer) already works fully offline — reading the image is done on-device, no setup needed. This key is only a fallback for the rare case the offline reader can't make out a selection: a free OCR.space API key (no Google account, no card — sign up at ocr.space/ocrapi, takes under a minute) and an internet connection."
                 android:textColor="@color/geneo_text_secondary"
                 android:textSize="13sp" />
 
