@@ -750,8 +750,14 @@ class OverlayService : Service() {
         val minH = dp(PDF_MIN_HEIGHT_DP)
         val maxW = (screenW * 0.95f).toInt()
         val maxH = (screenH * 0.9f).toInt()
-        val initW = (pdfSavedWidthPx ?: dp(320)).coerceIn(minW, maxW)
-        val initH = (pdfSavedHeightPx ?: dp(460)).coerceIn(minH, maxH)
+        
+        // Default: half screen width on left side with margins, adjustable height
+        val defaultMarginPx = dp(16)
+        val defaultW = ((screenW / 2f) - defaultMarginPx * 1.5f).toInt().coerceIn(minW, maxW)
+        val defaultH = (screenH * 0.85f).toInt().coerceIn(minH, maxH)
+        
+        val initW = pdfSavedWidthPx ?: defaultW
+        val initH = pdfSavedHeightPx ?: defaultH
 
         val params = addToolWindow(
             view,
@@ -761,6 +767,10 @@ class OverlayService : Service() {
             absolutePosition = true
         )
         if (params == null) return
+        
+        // Position on left side with margin
+        params.x = defaultMarginPx
+        params.y = defaultMarginPx
 
         view.findViewById<TextView>(R.id.tvPdfTitle).text = title
         view.findViewById<View>(R.id.btnClosePdf).setOnClickListener {
